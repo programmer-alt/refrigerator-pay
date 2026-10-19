@@ -52,9 +52,19 @@ export interface WebhookEvent {
   event_data: WebhookPaymentData;
 }
 
+export interface Spec {
+  label: string;
+  value: string;
+}
+
 export interface Product {
   id: string;
   title: string;
   price: number;
   currency: string;
+  image: string;
+  description: string;
+  specs: Spec[];
+  rating: number;
+  reviews: number;
 }
