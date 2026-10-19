@@ -31,11 +31,9 @@ export function OrderModal({ product, onClose }: OrderModalProps) {
     setErrorMessage('');
 
     try {
-      // Step 1: Create order
+      // Step 1: Create order (отправляем только productId — цена берётся на бэкенде)
       const order = await api.orders.create({
-        title: product.title,
-        price: product.price,
-        currency: product.currency,
+        productId: product.id,
         customerEmail: email,
       });
 

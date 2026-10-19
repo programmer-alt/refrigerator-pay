@@ -1,16 +1,23 @@
 import { PrismaClient } from '@prisma/client';
-import type { CreateOrderInput, OrderDto, OrderStatus } from '../types';
+import type { OrderDto, OrderStatus } from '../types';
 
 const prisma = new PrismaClient();
 
+interface OrderCreateData {
+  title: string;
+  price: number;
+  currency: string;
+  customerEmail: string;
+}
+
 export class OrderService {
-  async createOrder(input: CreateOrderInput): Promise<OrderDto> {
+  async createOrder(data: OrderCreateData): Promise<OrderDto> {
     const order = await prisma.order.create({
       data: {
-        title: input.title,
-        price: input.price,
-        currency: input.currency,
-        customerEmail: input.customerEmail,
+        title: data.title,
+        price: data.price,
+        currency: data.currency,
+        customerEmail: data.customerEmail,
       },
     });
 
