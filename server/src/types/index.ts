@@ -1,7 +1,5 @@
 export interface CreateOrderInput {
-  title: string;
-  price: number;
-  currency: string;
+  productId: string;
   customerEmail: string;
 }
 
@@ -52,4 +50,11 @@ export interface WebhookEvent {
   type: string;
   event: string;
   event_data: WebhookPaymentData;
+}
+
+export interface Product {
+  id: string;
+  title: string;
+  price: number;
+  currency: string;
 }

@@ -31,9 +31,7 @@ export interface Order {
 export type OrderStatus = 'PENDING' | 'PAID' | 'CANCELED';
 
 export interface CreateOrderPayload {
-  title: string;
-  price: number;
-  currency: string;
+  productId: string;
   customerEmail: string;
 }
 

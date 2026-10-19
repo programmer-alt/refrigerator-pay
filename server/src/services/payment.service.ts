@@ -6,8 +6,8 @@ import { config } from '../config/env';
 export class PaymentService {
   private orderService: OrderService;
 
-  constructor() {
-    this.orderService = new OrderService();
+  constructor(orderService?: OrderService) {
+    this.orderService = orderService ?? new OrderService();
   }
 
   async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse> {

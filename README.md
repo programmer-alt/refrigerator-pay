@@ -90,7 +90,7 @@ npm run dev
 
 | Метод | Эндпоинт | Описание |
 |-------|----------|----------|
-| POST | `/api/orders` | Создать черновик заказа (статус PENDING) |
+| POST | `/api/orders` | Создать черновик заказа (productId + email, цена берётся с бэкенда) |
 | GET | `/api/orders/:id` | Получить статус заказа |
 | POST | `/api/payments/create-intent` | Создать платёж, получить URL для оплаты |
 | POST | `/api/payments/webhook` | Вебхук ЮKassa (payment.succeeded / payment.canceled) |
