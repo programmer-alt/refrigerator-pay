@@ -1,6 +1,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import { config } from './config/env';
+import catalogRoutes from './routes/catalog.routes';
 import orderRoutes from './routes/order.routes';
 import paymentRoutes from './routes/payment.routes';
 
@@ -24,6 +25,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 });
 
 // Routes
+app.use('/api/products', catalogRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 

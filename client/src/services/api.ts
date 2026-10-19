@@ -17,6 +17,12 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  products: {
+    getAll(): Promise<import('../types').Product[]> {
+      return fetchJson<import('../types').Product[]>('/products');
+    },
+  },
+
   orders: {
     create(payload: CreateOrderPayload): Promise<Order> {
       return fetchJson<Order>('/orders', {
