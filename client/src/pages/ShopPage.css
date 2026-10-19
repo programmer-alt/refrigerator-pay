@@ -1,0 +1,43 @@
+.shop-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 24px;
+}
+
+.shop-page__hero {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.shop-page__title {
+  color: #f1f5f9;
+  font-size: 36px;
+  font-weight: 800;
+  margin: 0 0 12px 0;
+  background: linear-gradient(135deg, #f1f5f9 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.shop-page__subtitle {
+  color: #94a3b8;
+  font-size: 16px;
+  margin: 0;
+}
+
+.shop-page__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 24px;
+}
+
+@media (max-width: 768px) {
+  .shop-page__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shop-page__title {
+    font-size: 28px;
+  }
+}

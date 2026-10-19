@@ -1,0 +1,33 @@
+{
+  "name": "refrigerator-pay-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend for refrigerator online store with YooKassa payment integration",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:studio": "prisma studio",
+    "db:reset": "prisma migrate reset --force"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.8.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.2",
+    "@types/node": "^22.15.3",
+    "@types/uuid": "^10.0.0",
+    "prisma": "^6.8.2",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
