@@ -9,6 +9,7 @@ export function ShopPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.products
@@ -16,8 +17,8 @@ export function ShopPage() {
       .then((data) => {
         setProducts(data);
       })
-      .catch(() => {
-        setProducts([]);
+      .catch((err) => {
+        setError(err.message);
       })
       .finally(() => {
         setLoading(false);
@@ -28,6 +29,14 @@ export function ShopPage() {
     return (
       <div className="shop-page">
         <p className="shop-page__loading">Загрузка каталога...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="shop-page">
+        <p className="shop-page__error">Не удалось загрузить каталог: {error}</p>
       </div>
     );
   }
