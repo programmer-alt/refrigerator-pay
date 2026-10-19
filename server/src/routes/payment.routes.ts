@@ -9,6 +9,16 @@ router.post('/create-intent', (req: Request, res: Response) =>
   paymentController.createPaymentIntent(req, res)
 );
 
+// Mock-шлюз: обработка оплаты картой
+router.post('/mock/process', (req: Request, res: Response) =>
+  paymentController.processMockPayment(req, res)
+);
+
+// Mock-шлюз: получение чека
+router.get('/mock/receipt/:orderId', (req: Request, res: Response) =>
+  paymentController.getReceipt(req, res)
+);
+
 // Webhook требует raw body для проверки Content-MD5 подписи
 router.post(
   '/webhook',

@@ -27,6 +27,37 @@ export interface CreatePaymentResponse {
   orderId: string;
 }
 
+export interface MockPaymentInput {
+  orderId: string;
+  cardNumber: string;
+  expiryMonth: string;
+  expiryYear: string;
+  cvv: string;
+  cardHolder: string;
+}
+
+export interface MockPaymentResponse {
+  success: boolean;
+  paymentId: string;
+  transactionId: string;
+  orderId: string;
+  message?: string;
+}
+
+export interface ReceiptResponse {
+  orderId: string;
+  paymentId: string;
+  transactionId: string;
+  title: string;
+  price: number;
+  currency: string;
+  cardLast4: string;
+  cardHolder: string;
+  paymentDate: string;
+  status: string;
+  event: string;
+}
+
 export interface WebhookPaymentData {
   id: string;
   status: string;

@@ -43,3 +43,26 @@ export interface CreatePaymentResponse {
   confirmationUrl: string;
   orderId: string;
 }
+
+export interface MockPaymentPayload {
+  orderId: string;
+  cardNumber: string;
+  expiryMonth: string;
+  expiryYear: string;
+  cvv: string;
+  cardHolder: string;
+}
+
+export interface ReceiptData {
+  orderId: string;
+  paymentId: string;
+  transactionId: string;
+  title: string;
+  price: number;
+  currency: string;
+  cardLast4: string;
+  cardHolder: string;
+  paymentDate: string;
+  status: string;
+  event: string;
+}

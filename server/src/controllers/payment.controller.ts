@@ -1,10 +1,12 @@
 import crypto from 'node:crypto';
 import type { Request, Response } from 'express';
 import { PaymentService } from '../services/payment.service';
+import { MockPaymentService } from '../services/mock-payment.service';
 import { OrderService } from '../services/order.service';
-import type { CreatePaymentInput } from '../types';
+import type { CreatePaymentInput, MockPaymentInput } from '../types';
 
 const paymentService = new PaymentService();
+const mockPaymentService = new MockPaymentService();
 const orderService = new OrderService();
 
 export class PaymentController {
@@ -22,6 +24,64 @@ export class PaymentController {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       res.status(400).json({ error: message });
+    }
+  }
+
+  /**
+   * Обработка оплаты через mock-шлюз (ввод карты → ответ банка)
+   */
+  async processMockPayment(req: Request, res: Response): Promise<void> {
+    const body: MockPaymentInput = req.body;
+
+    const { orderId, cardNumber, expiryMonth, expiryYear, cvv, cardHolder } = body;
+
+    if (!orderId || !cardNumber || !expiryMonth || !expiryYear || !cvv || !cardHolder) {
+      res.status(400).json({ error: 'Missing required card fields' });
+      return;
+    }
+
+    try {
+      const result = await mockPaymentService.processPayment(body);
+
+      if (!result.success) {
+        res.status(400).json({
+          success: false,
+          message: result.message,
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        paymentId: result.paymentId,
+        transactionId: result.transactionId,
+        orderId: result.orderId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: message });
+    }
+  }
+
+  /**
+   * Получение данных чека после успешной оплаты
+   */
+  async getReceipt(req: Request, res: Response): Promise<void> {
+    const orderId = String(req.params.orderId || '');
+    const { cardLast4 = '0000', cardHolder = '' } = req.query as Record<string, string>;
+
+    try {
+      const receipt = await mockPaymentService.getReceipt(orderId, cardLast4, cardHolder);
+
+      if (!receipt) {
+        res.status(404).json({ error: 'Receipt not found or payment not completed' });
+        return;
+      }
+
+      res.status(200).json(receipt);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: message });
     }
   }
 
@@ -50,8 +110,8 @@ export class PaymentController {
       return;
     }
 
-    const eventId: string = (parsedBody.id as string) || '';
-    const paymentStatus: string = (parsedBody.status as string) || '';
+    const eventId: string = String(parsedBody.id || '');
+    const paymentStatus: string = String(parsedBody.status || '');
     const metadata: Record<string, string> = (parsedBody.metadata as Record<string, string>) || {};
     const orderId: string = metadata.order_id || '';
 

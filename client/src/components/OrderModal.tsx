@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { api } from '../services/api';
 import type { Product } from '../types';
@@ -10,6 +11,7 @@ interface OrderModalProps {
 }
 
 export function OrderModal({ product, onClose }: OrderModalProps) {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [step, setStep] = useState<'form' | 'processing' | 'redirect' | 'error'>('form');
   const [errorMessage, setErrorMessage] = useState('');
@@ -42,13 +44,20 @@ export function OrderModal({ product, onClose }: OrderModalProps) {
       // Step 2: Create payment intent
       const payment = await api.payments.createIntent({ orderId: order.id });
 
-      // Step 3: Redirect to payment
       setOrderId(payment.orderId);
       setStep('redirect');
 
-      // Simulate redirect delay
+      // Если URL внешний (ЮKassa) — редирект через window.location,
+      // если внутренний (mock) — через React Router
+      const isExternalUrl = payment.confirmationUrl.startsWith('http://') || payment.confirmationUrl.startsWith('https://');
+      
       setTimeout(() => {
-        window.location.href = payment.confirmationUrl;
+        if (isExternalUrl) {
+          window.location.href = payment.confirmationUrl;
+        } else {
+          const paymentUrl = new URL(payment.confirmationUrl);
+          navigate(paymentUrl.pathname + paymentUrl.search);
+        }
       }, 1500);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Произошла ошибка';
