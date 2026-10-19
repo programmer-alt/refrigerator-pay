@@ -6,6 +6,7 @@ interface Config {
   port: number;
   databaseUrl: string;
   clientUrl: string;
+  paymentMode: 'mock' | 'yookassa';
   yookassa: {
     shopId: string;
     secretKey: string;
@@ -28,6 +29,7 @@ export const config: Config = {
   port: parseInt(getEnvVar('PORT', '5000'), 10),
   databaseUrl: getEnvVar('DATABASE_URL'),
   clientUrl: getEnvVar('CLIENT_URL', 'http://localhost:5173'),
+  paymentMode: (getEnvVar('PAYMENT_MODE', 'mock') as 'mock' | 'yookassa') || 'mock',
   yookassa: {
     shopId: getEnvVar('YOOKASSA_SHOP_ID'),
     secretKey: getEnvVar('YOOKASSA_SECRET_KEY'),

@@ -1,4 +1,10 @@
-import type { CreateOrderPayload, CreatePaymentPayload, CreatePaymentResponse, Order } from '../types';
+import type {
+  CreateOrderPayload,
+  CreatePaymentPayload,
+  CreatePaymentResponse,
+  MockPaymentPayload,
+  ReceiptData,
+} from '../types';
 
 const API_BASE = '/api';
 
@@ -24,15 +30,15 @@ export const api = {
   },
 
   orders: {
-    create(payload: CreateOrderPayload): Promise<Order> {
-      return fetchJson<Order>('/orders', {
+    create(payload: CreateOrderPayload): Promise<import('../types').Order> {
+      return fetchJson<import('../types').Order>('/orders', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
     },
 
-    getById(id: string): Promise<Order> {
-      return fetchJson<Order>(`/orders/${id}`);
+    getById(id: string): Promise<import('../types').Order> {
+      return fetchJson<import('../types').Order>(`/orders/${id}`);
     },
   },
 
@@ -42,6 +48,30 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(payload),
       });
+    },
+
+    processMockPayment(payload: MockPaymentPayload): Promise<{
+      success: boolean;
+      paymentId: string;
+      transactionId: string;
+      orderId: string;
+    }> {
+      return fetchJson<never>('/payments/mock/process', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+
+    getReceipt(
+      orderId: string,
+      cardLast4: string,
+      cardHolder: string
+    ): Promise<ReceiptData> {
+      const params = new URLSearchParams({
+        cardLast4,
+        cardHolder,
+      });
+      return fetchJson<ReceiptData>(`/payments/mock/receipt/${orderId}?${params}`);
     },
   },
 };
