@@ -62,6 +62,14 @@ export const api = {
       });
     },
 
+    getOrderStatus(orderId: string): Promise<{
+      orderId: string;
+      status: string;
+      synced: boolean;
+    }> {
+      return fetchJson<never>(`/payments/status/${orderId}`);
+    },
+
     getReceipt(
       orderId: string,
       cardLast4: string,

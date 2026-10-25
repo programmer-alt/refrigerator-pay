@@ -10,6 +10,12 @@ interface OrderInfo {
   currency: string;
 }
 
+/**
+ * Страница оплаты (PCI DSS compliant).
+ *
+ * 🔴 НЕ отправляет полные номера карт на сервер.
+ * Клиент генерирует cardLast4 и outcome (success/fail) локально.
+ */
 export function PaymentPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -18,6 +24,7 @@ export function PaymentPage() {
   const [order, setOrder] = useState<OrderInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Поля карты — используются только локально для UI
   const [cardNumber, setCardNumber] = useState('');
   const [expiryMonth, setExpiryMonth] = useState('');
   const [expiryYear, setExpiryYear] = useState('');
@@ -78,23 +85,34 @@ export function PaymentPage() {
     setCvv(e.target.value.replace(/\D/g, '').substring(0, 3));
   };
 
+  /**
+   * Отправка платежа на сервер.
+   *
+   * 🔴 Отправляем только cardLast4 и outcome.
+   * Полные реквизиты карты НЕ отправляются на сервер.
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setProcessing(true);
 
     try {
+      const cleanedCard = cardNumber.replace(/\D/g, '');
+      const cardLast4 = cleanedCard.slice(-4);
+
+      // Определяем outcome на основе валидации на клиенте
+      // Для mock-режима: если номер карты валидный по Луну — success, иначе fail
+      const isValid = luhnCheck(cleanedCard);
+      const outcome = isValid ? 'success' : 'fail';
+
       await api.payments.processMockPayment({
         orderId,
-        cardNumber,
-        expiryMonth: expiryMonth.padStart(2, '0'),
-        expiryYear,
-        cvv,
-        cardHolder: cardHolder.trim(),
+        cardLast4,
+        outcome,
       });
 
       // Перенаправление на страницу чека
-      navigate(`/receipt/${orderId}?cardLast4=${cardNumber.slice(-4)}&cardHolder=${encodeURIComponent(cardHolder.trim())}`);
+      navigate(`/receipt/${orderId}?cardLast4=${cardLast4}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка обработки платежа';
       setError(message);
@@ -102,6 +120,32 @@ export function PaymentPage() {
       setProcessing(false);
     }
   };
+
+  /**
+   * Алгоритм Луна для валидации номера карты на клиенте.
+   */
+  function luhnCheck(cardNumber: string): boolean {
+    if (cardNumber.length < 13 || cardNumber.length > 19) return false;
+
+    let sum = 0;
+    let isEven = false;
+
+    for (let i = cardNumber.length - 1; i >= 0; i--) {
+      let digit = parseInt(cardNumber[i], 10);
+
+      if (isEven) {
+        digit *= 2;
+        if (digit > 9) {
+          digit -= 9;
+        }
+      }
+
+      sum += digit;
+      isEven = !isEven;
+    }
+
+    return sum % 10 === 0;
+  }
 
   // Подсказки для тестовых карт (валидные по алгоритму Луна)
   const testCards = [

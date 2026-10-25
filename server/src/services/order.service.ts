@@ -69,7 +69,11 @@ export class OrderService {
     return this.toDto(order);
   }
 
-  private toDto(order: {
+  /**
+   * Конвертирует сырую запись Order в OrderDto.
+   * Публичный для использования в контроллерах.
+   */
+  toDto(order: {
     id: string;
     title: string;
     price: unknown;

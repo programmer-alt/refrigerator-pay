@@ -25,5 +25,22 @@ model Order {
   createdAt       DateTime     @default(now())  @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
+  @@index([status, createdAt])
   @@map("orders")
+}
+
+model Payment {
+  id                String       @id @default(uuid()) @map("id")
+  orderId           String       @map("order_id")
+  externalPaymentId String?      @unique @map("external_payment_id")
+  provider          String       @default("mock")     @map("provider")
+  status            OrderStatus  @default(PENDING)    @map("status")
+  amount            Decimal      @map("amount")
+  currency          String       @default("RUB")      @map("currency")
+  createdAt         DateTime     @default(now())      @map("created_at")
+  updatedAt         DateTime     @updatedAt           @map("updated_at")
+
+  @@index([externalPaymentId])
+  @@index([orderId])
+  @@map("payments")
 }

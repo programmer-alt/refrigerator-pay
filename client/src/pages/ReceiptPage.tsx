@@ -16,6 +16,7 @@ interface ReceiptData {
   paymentDate: string;
   status: string;
   event: string;
+  customerEmail?: string;
 }
 
 export function ReceiptPage() {
@@ -167,6 +168,20 @@ export function ReceiptPage() {
               </div>
             </div>
           </div>
+
+          {/* Customer Email (masked) */}
+          {receipt.customerEmail && (
+            <>
+              <div className="receipt-page__divider" />
+              <div className="receipt-page__section">
+                <h3 className="receipt-page__section-title">Данные покупателя</h3>
+                <div className="receipt-page__row">
+                  <span className="receipt-page__label">Email</span>
+                  <span className="receipt-page__value">{receipt.customerEmail}</span>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Status Badge */}
           <div className="receipt-page__status">

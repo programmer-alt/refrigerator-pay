@@ -4,11 +4,8 @@ import { OrderService } from './order.service';
 
 export interface MockCardInput {
   orderId: string;
-  cardNumber: string;
-  expiryMonth: string;
-  expiryYear: string;
-  cvv: string;
-  cardHolder: string;
+  cardLast4: string;
+  outcome: 'success' | 'fail';
 }
 
 export interface MockPaymentResult {
@@ -31,35 +28,7 @@ export interface ReceiptData {
   paymentDate: string;
   status: 'succeeded';
   event: string;
-}
-
-/**
- * Валидация номера карты по алгоритму Луна
- */
-function luhnCheck(cardNumber: string): boolean {
-  const cleaned = cardNumber.replace(/\s|-/g, '');
-  if (cleaned.length < 13 || cleaned.length > 19 || !/^\d+$/.test(cleaned)) {
-    return false;
-  }
-
-  let sum = 0;
-  let isEven = false;
-
-  for (let i = cleaned.length - 1; i >= 0; i--) {
-    let digit = parseInt(cleaned[i], 10);
-
-    if (isEven) {
-      digit *= 2;
-      if (digit > 9) {
-        digit -= 9;
-      }
-    }
-
-    sum += digit;
-    isEven = !isEven;
-  }
-
-  return sum % 10 === 0;
+  customerEmail?: string;
 }
 
 // TODO: Раскомментировать для отображения банка-эмитента в чеке:
@@ -86,15 +55,18 @@ export class MockPaymentService {
     this.orderService = orderService ?? new OrderService();
   }
 
+  private generateId(): string {
+    return uuidv4();
+  }
+
   /**
-   * Обрабатывает "оплату" картой:
-   * - Валидирует номер карты (Luhn)
-   * - Проверяет срок действия
-   * - Имитирует задержку банка (2 сек)
-   * - Обновляет статус заказа на PAID
+   * Обрабатывает "оплату" картой (PCI DSS compliant).
+   *
+   * 🔴 Принимаем только last4 цифры карты и outcome.
+   * Полные реквизиты карты НЕ принимаются и НЕ логируются.
    */
   async processPayment(input: MockCardInput): Promise<MockPaymentResult> {
-    const { orderId, cardNumber, expiryMonth, expiryYear, cvv, cardHolder } = input;
+    const { orderId, cardLast4, outcome } = input;
 
     // Валидация orderId
     const order = await this.orderService.getOrderById(orderId);
@@ -118,63 +90,14 @@ export class MockPaymentService {
       };
     }
 
-    // Валидация номера карты
-    const cleanedCard = cardNumber.replace(/\s|-/g, '');
-    if (!luhnCheck(cleanedCard)) {
+    // Валидация last4 (только 4 цифры)
+    if (!/^\d{4}$/.test(cardLast4)) {
       return {
         success: false,
         paymentId: '',
         transactionId: '',
         orderId,
-        message: 'Неверный номер карты. Проверьте по алгоритму Луна.',
-      };
-    }
-
-    // Валидация срока действия
-    const month = parseInt(expiryMonth, 10);
-    const year = parseInt(`20${expiryYear}`, 10);
-
-    if (month < 1 || month > 12) {
-      return {
-        success: false,
-        paymentId: '',
-        transactionId: '',
-        orderId,
-        message: 'Неверный месяц окончания карты',
-      };
-    }
-
-    const now = new Date();
-    const expiry = new Date(year, month);
-    if (expiry <= now) {
-      return {
-        success: false,
-        paymentId: '',
-        transactionId: '',
-        orderId,
-        message: 'Карта просрочена',
-      };
-    }
-
-    // Валидация CVV
-    if (!/^\d{3,4}$/.test(cvv)) {
-      return {
-        success: false,
-        paymentId: '',
-        transactionId: '',
-        orderId,
-        message: 'Неверный CVV код',
-      };
-    }
-
-    // Валидация владельца карты
-    if (cardHolder.trim().length < 2) {
-      return {
-        success: false,
-        paymentId: '',
-        transactionId: '',
-        orderId,
-        message: 'Введите имя владельца карты',
+        message: 'Неверный формат последних 4 цифр карты',
       };
     }
 
@@ -182,15 +105,15 @@ export class MockPaymentService {
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Генерация ID платежа и транзакции
-    const paymentId = `mock_pay_${uuidv4()}`;
-    const transactionId = `txn_${uuidv4().replace(/-/g, '').substring(0, 16)}`;
+    const paymentId = `mock_pay_${this.generateId()}`;
+    const transactionId = `txn_${this.generateId().replace(/-/g, '').substring(0, 16)}`;
 
     // Обновление заказа
     await this.orderService.updatePaymentId(orderId, paymentId);
-    await this.orderService.updateOrderStatus(orderId, 'PAID');
+    await this.orderService.updateOrderStatus(orderId, outcome === 'success' ? 'PAID' : 'CANCELED');
 
     return {
-      success: true,
+      success: outcome === 'success',
       paymentId,
       transactionId,
       orderId,
@@ -198,13 +121,16 @@ export class MockPaymentService {
   }
 
   /**
-   * Формирует данные для чека
+   * Формирует данные для чека (🟠 IDOR protection: маскировка персональных данных).
    */
   async getReceipt(orderId: string, cardLast4: string, cardHolder: string): Promise<ReceiptData | null> {
     const order = await this.orderService.getOrderById(orderId);
     if (!order || order.status !== 'PAID') {
       return null;
     }
+
+    // --- 🟠 Маскировка email (первая буква + ***@domain) ---
+    const maskedEmail = this.maskEmail(order.customerEmail);
 
     return {
       orderId: order.id,
@@ -214,11 +140,22 @@ export class MockPaymentService {
       price: Number(order.price),
       currency: order.currency,
       cardLast4,
-      cardHolder,
+      cardHolder: cardHolder || 'VISA',
       paymentDate: order.updatedAt,
       status: 'succeeded',
       event: 'Платёж выполнен',
+      customerEmail: maskedEmail,
     };
+  }
+
+  /**
+   * Маскирует email: v***@mail.ru
+   */
+  private maskEmail(email: string): string {
+    const [name, domain] = email.split('@');
+    if (!name || !domain) return '***@***.***';
+    const maskedName = name.charAt(0) + '*'.repeat(Math.max(name.length - 1, 1));
+    return `${maskedName}@${domain}`;
   }
 
   /**
