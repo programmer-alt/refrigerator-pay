@@ -1,8 +1,8 @@
 import type { Request, Response } from 'express';
 import { OrderService } from '../services/order.service';
 import { CatalogService } from '../services/catalog.service';
-import type { CreateOrderInput } from '../types';
 import { PrismaClient } from '@prisma/client';
+import { createOrderInputSchema, validate } from '../validators';
 
 const prisma = new PrismaClient();
 const orderService = new OrderService();
@@ -10,21 +10,21 @@ const catalogService = new CatalogService();
 
 export class OrderController {
   /**
-   * Создание заказа с защитой от race condition.
-   * Использует Prisma transaction для атомарности.
+   * Создание заказа с Zod-валидацией и защитой от race condition.
    */
   async createOrder(req: Request, res: Response): Promise<void> {
-    const body: CreateOrderInput = req.body;
+    // 🔴 Zod-валидация вместо ручных проверок
+    const validation = validate(createOrderInputSchema, req.body);
 
-    if (!body.productId || !body.customerEmail) {
-      res.status(400).json({
-        error: 'Missing required fields: productId, customerEmail',
-      });
+    if (!validation.success) {
+      res.status(400).json({ error: validation.error });
       return;
     }
 
+    const { productId, customerEmail } = validation.data;
+
     // 🔒 Проверка продукта из каталога (вне транзакции — каталог статичный)
-    const catalogProduct = catalogService.getProductById(body.productId);
+    const catalogProduct = catalogService.getProductById(productId);
 
     if (!catalogProduct) {
       res.status(404).json({ error: 'Product not found in catalog' });
@@ -39,7 +39,7 @@ export class OrderController {
             title: catalogProduct.title,
             price: catalogProduct.price,
             currency: catalogProduct.currency,
-            customerEmail: body.customerEmail,
+            customerEmail,
           },
         });
       });
@@ -53,6 +53,11 @@ export class OrderController {
 
   async getOrderById(req: Request, res: Response): Promise<void> {
     const id = req.params.id as string;
+
+    if (!id || id.length === 0) {
+      res.status(400).json({ error: 'Order ID is required' });
+      return;
+    }
 
     const order = await orderService.getOrderById(id);
 

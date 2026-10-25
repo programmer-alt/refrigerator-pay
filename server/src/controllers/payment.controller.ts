@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { PaymentService } from '../services/payment.service';
 import { MockPaymentService } from '../services/mock-payment.service';
 import { OrderService } from '../services/order.service';
-import type { CreatePaymentInput } from '../types';
+import { createPaymentInputSchema, mockPaymentInputSchema, validate } from '../validators';
 import { config } from '../config/env';
 
 const paymentService = new PaymentService();
@@ -12,15 +12,16 @@ const orderService = new OrderService();
 
 export class PaymentController {
   async createPaymentIntent(req: Request, res: Response): Promise<void> {
-    const body: CreatePaymentInput = req.body;
+    // 🔴 Zod-валидация вместо ручных проверок
+    const validation = validate(createPaymentInputSchema, req.body);
 
-    if (!body.orderId) {
-      res.status(400).json({ error: 'Missing required field: orderId' });
+    if (!validation.success) {
+      res.status(400).json({ error: validation.error });
       return;
     }
 
     try {
-      const payment = await paymentService.createPayment(body);
+      const payment = await paymentService.createPayment(validation.data);
       res.status(200).json(payment);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -35,35 +36,16 @@ export class PaymentController {
    * Полные реквизиты карты НЕ принимаются.
    */
   async processMockPayment(req: Request, res: Response): Promise<void> {
-    const body = req.body as Record<string, unknown>;
+    // 🔴 Zod-валидация вместо ручных проверок
+    const validation = validate(mockPaymentInputSchema, req.body);
 
-    const orderId = String(body.orderId || '');
-    const cardLast4 = String(body.cardLast4 || '');
-    const outcome = String(body.outcome || '');
-
-    if (!orderId || !cardLast4 || !outcome) {
-      res.status(400).json({ error: 'Missing required fields: orderId, cardLast4, outcome' });
-      return;
-    }
-
-    // Валидация cardLast4 (только 4 цифры)
-    if (!/^\d{4}$/.test(cardLast4)) {
-      res.status(400).json({ error: 'Invalid cardLast4 format. Expected 4 digits.' });
-      return;
-    }
-
-    // Валидация outcome
-    if (outcome !== 'success' && outcome !== 'fail') {
-      res.status(400).json({ error: 'Invalid outcome. Expected "success" or "fail".' });
+    if (!validation.success) {
+      res.status(400).json({ error: validation.error });
       return;
     }
 
     try {
-      const result = await mockPaymentService.processPayment({
-        orderId,
-        cardLast4,
-        outcome: outcome as 'success' | 'fail',
-      });
+      const result = await mockPaymentService.processPayment(validation.data);
 
       if (!result.success) {
         res.status(400).json({
