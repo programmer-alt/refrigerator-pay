@@ -1,0 +1,62 @@
+{
+  "worktrees": {
+    "wt-1792868284205-1": {
+      "branch": "fortune-sphere",
+      "path": "d:\\portfolio\\.gigacode_vsc\\worktrees\\fortune-sphere",
+      "parentBranch": "fix",
+      "createdAt": "2026-10-24T18:58:04.205Z",
+      "remote": "origin"
+    },
+    "wt-1792868295128-2": {
+      "branch": "intriguing-medicine",
+      "path": "d:\\portfolio\\.gigacode_vsc\\worktrees\\intriguing-medicine",
+      "parentBranch": "main",
+      "createdAt": "2026-10-24T18:58:15.128Z",
+      "remote": "origin",
+      "label": "Исправление линии"
+    },
+    "wt-1792869283422-3": {
+      "branch": "nova-garlic",
+      "path": "d:\\portfolio\\.gigacode_vsc\\worktrees\\nova-garlic",
+      "parentBranch": "fix",
+      "createdAt": "2026-10-24T19:14:43.422Z",
+      "remote": "origin"
+    },
+    "wt-1792876272374-1": {
+      "branch": "purrfect-crater",
+      "path": "d:\\portfolio\\.gigacode_vsc\\worktrees\\purrfect-crater",
+      "parentBranch": "fix",
+      "createdAt": "2026-10-24T21:11:12.374Z",
+      "remote": "origin"
+    }
+  },
+  "sessions": {
+    "ses_e90b9085affejNmOX3Aem4N7gr": {
+      "worktreeId": "wt-1792868284205-1",
+      "createdAt": "2026-10-24T18:58:04.369Z"
+    },
+    "ses_e90b8ddd2ffe3lTusxBw2IlmG3": {
+      "worktreeId": "wt-1792868295128-2",
+      "createdAt": "2026-10-24T18:58:15.214Z"
+    },
+    "ses_e90a9c926ffeLrSoKgj0niF0DM": {
+      "worktreeId": "wt-1792869283422-3",
+      "createdAt": "2026-10-24T19:14:43.633Z"
+    },
+    "ses_e903f2448ffeXpgNH6LkjrnRmS": {
+      "worktreeId": "wt-1792876272374-1",
+      "createdAt": "2026-10-24T21:11:12.592Z"
+    }
+  },
+  "tabOrder": {
+    "local": [
+      "pending:1"
+    ]
+  },
+  "worktreeOrder": [
+    "wt-1792868284205-1",
+    "wt-1792868295128-2",
+    "wt-1792869283422-3",
+    "wt-1792876272374-1"
+  ]
+}

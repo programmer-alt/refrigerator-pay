@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Портфолио фронтенд-разработчика Вадима Карагодина: проекты на React, TypeScript и Node.js.">
+    <title>Карагодин Вадим — Frontend Developer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Hero-секция -->
+    <header class="hero">
+        <canvas class="matrix-canvas" id="matrixCanvas" aria-hidden="true"></canvas>
+        <div class="hero-container">
+            <div class="hero-profile">
+                <div class="hero-photo">
+                    <img src="images/avatar.png" alt="Фото Карагодина Вадима">
+                </div>
+                <div class="hero-info">
+                    <h1 class="hero-name">Карагодин Вадим Юрьевич</h1>
+                    <h2 class="hero-title">Frontend Developer</h2>
+                    <span class="sr-only">Frontend Developer</span>
+                    <div class="hero-tech">
+                        <span class="tech-badge">React</span>
+                        <span class="tech-badge">TypeScript</span>
+                        <span class="tech-badge">Node.js</span>
+                    </div>
+                    <div class="hero-actions">
+                        <a href="#projects" class="btn btn-primary">Смотреть проекты</a>
+                        <a href="#contact" class="btn btn-secondary">Связаться</a>
+                    </div>
+                    <div class="hero-social">
+                        <a href="https://github.com/programmer-alt" class="social-link" aria-label="GitHub" target="_blank" rel="noopener noreferrer">
+                            <i class="fab fa-github"></i>
+                            <span class="sr-only">GitHub</span>
+                        </a>
+                    </div>
+                    <div class="scroll-indicator">
+                        <span>Прокрути вниз</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- О себе -->
+        <section class="section" id="about">
+            <div class="container">
+                <h2 class="section-title">О себе</h2>
+                <div class="about-content">
+                    <p class="about-text">
+                        В разработке меня привлекает полный цикл — от идеи до работающего продукта. 
+                        Мне важно не просто «сверстать интерфейс», а понять задачу пользователя 
+                        и закрыть её целиком: фронтенд, бэкенд, база данных.
+                    </p>
+                    <p class="about-text">
+                        В работе использую AI-driven workflow как основной инструмент разработки. 
+                        С помощью LLM и кастомных MCP-серверов проектирую архитектуру, 
+                        пишу код, генерирую тесты и рефакторю — от идеи до рабочего приложения. 
+                        AI для меня — не помощник, а полноценный инструмент разработки, 
+                        который позволяет создавать сложные проекты самостоятельно и быстро.
+                    </p>
+                    <div class="about-facts">
+                        <div class="fact-item">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span>Россия</span>
+                        </div>
+                        <div class="fact-item">
+                            <i class="fas fa-laptop-house"></i>
+                            <span>Готов к удалённой работе</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Навыки -->
+        <section class="section" id="skills">
+            <div class="container">
+                <h2 class="section-title">Навыки</h2>
+                <div class="skills-grid">
+                    <div class="skill-card">
+                        <div class="skill-header">
+                            <i class="fas fa-code"></i>
+                            <h3>Frontend</h3>
+                        </div>
+                        <ul class="skill-list">
+                            <li>HTML5 / CSS3, Адаптивная верстка</li>                        
+                            <li>TypeScript, React 19</li>
+                            <li>Vite, Zustand (state management)</li>
+                            <li>Socket.io Client, WebSockets</li>
+                            <li>Zod (validation), REST API</li>
+                        </ul>
+                    </div>
+                    <div class="skill-card">
+                        <div class="skill-header">
+                            <i class="fas fa-server"></i>
+                            <h3>Backend & DB</h3>
+                        </div>
+                        <ul class="skill-list">
+                            <li>Node.js, Express.js</li>
+                            <li>PostgreSQL, Prisma ORM</li>
+                            <li>Socket.io, JWT, Keycloak SSO</li>
+                            <li>Stripe API, Multer</li>
+                            <li>Winston (logging), Helmet</li>
+                        </ul>
+                    </div>
+                    <div class="skill-card">
+                        <div class="skill-header">
+                            <i class="fas fa-robot"></i>
+                            <h3>AI & Dev Workflow</h3>
+                        </div>
+                        <ul class="skill-list">
+                            <li>LLM (DeepSeek, Qwen, GigaCode)</li>
+                            <li>Prompt Engineering, AI-код-ревью</li>
+                            <li>AI-рефакторинг, генерация тестов</li>
+                            <li>MCP-серверы: Narsil, Playwright, Clear-thought, Memory</li>
+                            <li>Автоматизация разработки</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Проекты -->
+        <section class="section" id="projects">
+            <div class="container">
+                <h2 class="section-title">Проекты</h2>
+                <div class="projects-grid">
+                    
+                    <!-- Проект 1: Auction Marketplace -->
+                    <div class="project-card" data-lightning>
+                        <div class="lightning-wrap">
+                            <canvas class="lightning-canvas"></canvas>
+                        </div>
+                        <div class="project-image">
+                            <div class="project-placeholder">
+                                <i class="fas fa-gavel"></i>
+                            </div>
+                        </div>
+                        <div class="project-info">
+                            <h3>Global Auction Marketplace</h3>
+                            <p>Международная торговая площадка для аукционов с торгами в реальном времени и платежами через Stripe.</p>
+                            <div class="project-tech">
+                                <span>React 19</span>
+                                <span>TypeScript</span>
+                                <span>Node.js</span>
+                                <span>Express.js</span>
+                                <span>PostgreSQL</span>
+                                <span>Prisma ORM</span>
+                                <span>Socket.io</span>
+                                <span>Stripe</span>
+                                <span>Zustand</span>
+                                <span>Zod</span>
+                            </div>
+                            <div class="project-links">
+                                <a href="https://github.com/programmer-alt/auction-marketplace" class="project-link" target="_blank" rel="noopener noreferrer">
+                                    <i class="fab fa-github"></i> GitHub
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Проект 2: Keycloak Messenger -->
+                    <div class="project-card" data-lightning>
+                        <div class="lightning-wrap">
+                            <canvas class="lightning-canvas"></canvas>
+                        </div>
+                        <div class="project-image">
+                            <div class="project-placeholder">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                        </div>
+                        <div class="project-info">
+                            <h3>Keycloak Messenger</h3>
+                            <p>Веб-мессенджер с корпоративной аутентификацией через Keycloak SSO и обменом сообщениями в реальном времени.</p>
+                            <div class="project-tech">
+                                <span>React 19</span>
+                                <span>TypeScript</span>
+                                <span>Socket.io</span>
+                                <span>Keycloak SSO</span>
+                                <span>Node.js</span>
+                                <span>Express.js</span>
+                                <span>JWT</span>
+                            </div>
+                            <div class="project-links">
+                                <a href="https://github.com/programmer-alt/Keycloak-messenger" class="project-link" target="_blank" rel="noopener noreferrer">
+                                    <i class="fab fa-github"></i> GitHub
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- Образование -->
+        <section class="section" id="education">
+            <div class="container">
+                <h2 class="section-title">Образование</h2>
+                <div class="education-grid">
+                    <div class="education-card">
+                        <div class="education-year">2011</div>
+                        <h3>Кубанский государственный университет</h3>
+                        <p class="education-faculty">Прикладная информатика в экономике</p>
+                        <p class="education-degree">Информатик-экономист</p>
+                        <p class="education-format">Высшее</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Что ищу -->
+        <section class="section" id="looking-for">
+            <div class="container">
+                <h2 class="section-title">Что ищу</h2>
+                <div class="about-content">
+                    <p class="about-text">
+                        Ищу позицию <strong>Frontend Developer</strong> в продуктовой команде, 
+                        где смогу приносить реальную пользу через качественный код, 
+                        самостоятельное решение задач и современный стек технологий.
+                    </p>
+                    <div class="about-facts">
+                        <div class="fact-item">
+                            <i class="fas fa-briefcase"></i>
+                            <span>Полную занятость, удалённая работа</span>
+                        </div>
+                        <div class="fact-item">
+                            <i class="fas fa-code-branch"></i>
+                            <span>Сложные продукты с реальными пользователями</span>
+                        </div>
+                        <div class="fact-item">
+                            <i class="fas fa-rocket"></i>
+                            <span>Команду, где ценят качество и скорость</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Контакты -->
+        <section class="section" id="contact">
+            <div class="container">
+                <h2 class="section-title">Контакты</h2>
+                <!-- Осциллограф -->
+                <div class="oscilloscope-container">
+                    <svg class="osc-svg" viewBox="0 0 800 80" preserveAspectRatio="none" aria-hidden="true">
+                        <defs>
+                            <linearGradient id="oscGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#3b82f6" stop-opacity="0" />
+                                <stop offset="15%" stop-color="#3b82f6" stop-opacity="0.8" />
+                                <stop offset="50%" stop-color="#00d4ff" stop-opacity="1" />
+                                <stop offset="85%" stop-color="#8b5cf6" stop-opacity="0.8" />
+                                <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0" />
+                            </linearGradient>
+                        </defs>
+                        <!-- Вторичная эхо-волна на фоне -->
+                        <path id="oscPathEcho" class="osc-path-echo" d="" />
+                        <!-- Основной луч осциллографа -->
+                        <path id="oscPathMain" class="osc-path-main" d="" />
+                    </svg>
+                    <div class="osc-glow"></div>
+                </div>
+                <div class="contact-grid">
+                    <div class="contact-item">
+                        <i class="fas fa-envelope"></i>
+                        <div>
+                            <h3>Email</h3>
+                            <a href="mailto:modstils88@mail.ru">modstils88@mail.ru</a>
+                        </div>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fab fa-github"></i>
+                        <div>
+                            <h3>GitHub</h3>
+                            <a href="https://github.com/programmer-alt" target="_blank" rel="noopener noreferrer">programmer-alt</a>
+                        </div>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fab fa-telegram"></i>
+                        <div>
+                            <h3>Telegram</h3>
+                            <a href="https://t.me/Demitil_Triptonnin" target="_blank" rel="noopener noreferrer">@Demitil_Triptonnin</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <a href="resume.pdf" download="Karagodin_Vadim_CV.pdf" class="btn-download-cv">
+                <i class="fas fa-file-pdf"></i>
+                <span>Скачать резюме в PDF</span>
+            </a>
+            <p>&copy; 2026 Карагодин Вадим. Все права защищены.</p>
+        </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+</body>
+</html>                                                                                                                                                                                                                                                                                                                                                                        

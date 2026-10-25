@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Цепочка оформления заказа</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+    h1 {
+      color: #f8fafc;
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 40px;
+      text-align: center;
+    }
+    .chain {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .step {
+      background: #1e293b;
+      border: 2px solid #334155;
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+    }
+    .step-number {
+      display: inline-block;
+      background: #3b82f6;
+      color: white;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 10px;
+    }
+    .step img {
+      width: 280px;
+      height: auto;
+      border-radius: 8px;
+      display: block;
+    }
+    .step-label {
+      color: #94a3b8;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    .arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .arrow svg {
+      width: 40px;
+      height: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Цепочка оформления заказа</h1>
+  <div class="chain">
+    
+    <!-- Step 2 -->
+    <div class="step">
+      <span class="step-number">Шаг 2</span>
+      <img src="step_2.png" alt="Оформление заказа">
+      <div class="step-label">Ввод пароля</div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="arrow">
+      <svg viewBox="0 0 40 20" fill="none">
+        <path d="M5 10 H30" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+        <path d="M25 5 L32 10 L25 15" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step">
+      <span class="step-number">Шаг 3</span>
+      <img src="step_3.png" alt="Создание заказа">
+      <div class="step-label">Перенаправление</div>
+    </div>
+
+    <!-- Arrow -->
+    <div class="arrow">
+      <svg viewBox="0 0 40 20" fill="none">
+        <path d="M5 10 H30" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+        <path d="M25 5 L32 10 L25 15" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step">
+      <span class="step-number">Шаг 4</span>
+      <img src="step_4.png" alt="Тестовая оплата">
+      <div class="step-label">ЮKassa</div>
+    </div>
+
+  </div>
+</body>
+</html>

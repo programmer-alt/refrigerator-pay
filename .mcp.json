@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "narsil-mcp": {
+      "command": "npx",
+      "args": ["narsil-mcp", "--repos", ".", "--git", "--call-graph"]
+    }
+  }
+}
