@@ -1,5 +1,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { config } from './config/env';
 import catalogRoutes from './routes/catalog.routes';
 import orderRoutes from './routes/order.routes';
@@ -7,7 +9,38 @@ import paymentRoutes from './routes/payment.routes';
 
 const app = express();
 
+// 🟠 Helmet: защита HTTP headers (X-Content-Type-Options, X-Frame-Options, CSP, и т.д.)
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      scriptSrc: ["'self'"],
+    },
+  },
+}));
+
+// 🟠 Rate limiting: защита от спама и перебора
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 минут
+  max: 100, // максимум 100 запросов с одного IP за 15 минут
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
+const orderLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 минут
+  max: 10, // максимум 10 созданий заказов с одного IP за 15 минут
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many order creations, please try again later.' },
+});
+
 // Middleware
+app.use(generalLimiter);
+
 app.use(
   cors({
     origin: config.clientUrl,
@@ -26,7 +59,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 
 // Routes
 app.use('/api/products', catalogRoutes);
-app.use('/api/orders', orderRoutes);
+app.use('/api/orders', orderLimiter, orderRoutes); // 🔒 Rate-limited
 app.use('/api/payments', paymentRoutes);
 
 // Health check

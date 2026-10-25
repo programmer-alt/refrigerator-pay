@@ -46,11 +46,8 @@ export interface CreatePaymentResponse {
 
 export interface MockPaymentPayload {
   orderId: string;
-  cardNumber: string;
-  expiryMonth: string;
-  expiryYear: string;
-  cvv: string;
-  cardHolder: string;
+  cardLast4: string;
+  outcome: 'success' | 'fail';
 }
 
 export interface ReceiptData {
@@ -65,4 +62,5 @@ export interface ReceiptData {
   paymentDate: string;
   status: string;
   event: string;
+  customerEmail?: string;
 }
