@@ -1,141 +1,251 @@
-# FrigoShop — Интернет-магазин бытовой техники
+# FrigoShop — Интернет-магазин холодильников
 
-Пет-проект интернет-магазина холодильников с интеграцией онлайн-оплаты ЮKassa и локальным эмулятором платёжного шлюза.
+Пет-проект интернет-магазина бытовой техники с полной интеграцией онлайн-оплаты (ЮKassa) и локальным эмулятором платёжного шлюза.
 
-## Демонстрация
+## 🛠 Стек технологий
 
-![Шаг 2 — Оформление заказа](docs/screenshots/step_2.png)
-*Ввод пароля и подтверждение заказа*
+### Backend
+- **Runtime:** Node.js + TypeScript
+- **Framework:** Express.js 5
+- **ORM:** Prisma (SQLite для разработки, PostgreSQL для продакшена)
+- **Валидация:** Zod 4 (декларативная валидация всех входных данных)
+- **Безопасность:** Helmet (HTTP headers), CORS, express-rate-limit
+- **Тесты:** Jest + Supertest
+- **Dev-инструменты:** tsx (hot reload), Prisma Studio
 
-![Шаг 3 — Создание заказа](docs/screenshots/step_3.png)
-*Создание заказа и перенаправление на оплату*
+### Frontend
+- **Framework:** React 19 + TypeScript
+- **Build tool:** Vite 6 + @vitejs/plugin-react
+- **Routing:** React Router DOM 7
+- **Icons:** Lucide React
+- **Стили:** Чистый CSS (BEM-подобные классы)
 
-![Шаг 4 — Тестовая оплата](docs/screenshots/step_4.png)
-*Интерфейс ЮKassa для тестового платежа*
+### Платежи
+- **Боевой режим:** ЮKassa API v3 (REST, Basic Auth, Webhook)
+- **Демо режим:** Mock-шлюз (эмуляция банка с задержкой 2 сек)
 
-## Стек
+## 📐 Архитектура
 
-- **Backend:** Node.js, Express, TypeScript, Prisma ORM (SQLite), CORS, dotenv, uuid
-- **Frontend:** React (Vite), TypeScript, Lucide-react, чистый CSS
-- **Платежи:** ЮKassa (боевой режим) + Mock-шлюз (демо-режим)
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Browser (React Client)                   │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+│  │  Shop    │ │ Payment  │ │ Receipt  │ │ Success  │       │
+│  │  Page    │ │  Page    │ │  Page    │ │  Page    │       │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
+│         │              │              │                     │
+│         └──────────────┴──────────────┘                     │
+│                         │                                   │
+│                   fetchJson()                               │
+│                   /api/* (Vite proxy)                       │
+└─────────────────────────┼───────────────────────────────────┘
+                          │ HTTP
+┌─────────────────────────┼───────────────────────────────────┐
+│                Backend (Express Server)                      │
+│                         │                                   │
+│  ┌──────────────────────┴──────────────────────────────┐   │
+│  │              Controllers Layer                       │   │
+│  │  OrderController  │  PaymentController               │   │
+│  └────────────────────┬────────────────────────────────┘   │
+│                       │                                     │
+│  ┌────────────────────┴────────────────────────────────┐   │
+│  │              Services Layer                          │   │
+│  │  OrderService  │  PaymentService  │  CatalogService  │   │
+│  │                │  (Adapter Pattern)                   │   │
+│  │                │  ├── MockPaymentService              │   │
+│  │                │  └── YooKassa API (direct fetch)     │   │
+│  └────────────────────┬────────────────────────────────┘   │
+│                       │                                     │
+│  ┌────────────────────┴────────────────────────────────┐   │
+│  │              Data Access Layer                       │   │
+│  │              Prisma Client                           │   │
+│  └────────────────────┬────────────────────────────────┘   │
+│                       │                                     │
+│              ┌────────┴────────┐                            │
+│              │   Database      │                            │
+│              │  SQLite / PG    │                            │
+│              └─────────────────┘                            │
+└─────────────────────────────────────────────────────────────┘
+```
 
-## Структура проекта
+### Слои приложения
+
+```
+Request → Middleware (Helmet, Rate Limit, CORS, Logging)
+        → Router (catalog, order, payment)
+        → Controller (Zod validation)
+        → Service (business logic)
+        → Prisma (data access)
+        → Response
+```
+
+## 🏗 Структура проекта
 
 ```
 refrigerator-pay/
-├── server/                 # Backend (Express + TypeScript)
+├── server/                     # Backend (Express + TypeScript)
 │   ├── prisma/
-│   │   └── schema.prisma   # Модель Order + миграции
+│   │   ├── schema.prisma       # Модели: Order, Payment
+│   │   ├── migrations/         # Миграции Prisma
+│   │   └── dev.db              # SQLite база (dev)
 │   ├── src/
-│   │   ├── config/         # Настройки и переменные окружения
-│   │   ├── controllers/    # Контроллеры (order, payment)
-│   │   ├── services/       # Бизнес-логика (order, payment, mock-payment)
-│   │   ├── routes/         # API роуты
-│   │   ├── types/          # TypeScript типы и DTO
-│   │   └── index.ts        # Точка входа
-│   ├── .env.example
-│   └── package.json
-├── client/                 # Frontend (React + Vite)
-│   ├── src/
-│   │   ├── components/     # ProductCard, Header, OrderModal, StatusBadge
-│   │   ├── pages/          # ShopPage, PaymentPage, ReceiptPage, SuccessPage, CancelPage
-│   │   ├── services/       # API-клиент
-│   │   ├── types/          # TypeScript типы
-│   │   ├── App.tsx
-│   │   └── main.tsx
+│   │   ├── config/
+│   │   │   └── env.ts          # Конфигурация (.env)
+│   │   ├── controllers/
+│   │   │   ├── catalog.controller.ts
+│   │   │   ├── order.controller.ts
+│   │   │   └── payment.controller.ts
+│   │   ├── services/
+│   │   │   ├── catalog.service.ts
+│   │   │   ├── order.service.ts
+│   │   │   ├── payment.service.ts      # Adapter Pattern
+│   │   │   └── mock-payment.service.ts # Эмулятор банка
+│   │   ├── routes/
+│   │   │   ├── catalog.routes.ts
+│   │   │   ├── order.routes.ts
+│   │   │   └── payment.routes.ts
+│   │   ├── types/
+│   │   │   └── index.ts          # DTO, интерфейсы
+│   │   ├── validators.ts         # Zod-схемы валидации
+│   │   └── index.ts              # Точка входа
+│   ├── __tests__/                # Unit-тесты
+│   │   ├── catalog.service.test.ts
+│   │   ├── mock-payment.service.test.ts
+│   │   ├── order.service.test.ts
+│   │   ├── payment.service.test.ts
+│   │   ├── validators.test.ts
+│   │   └── setup.ts
+│   ├── .env                      # Переменные окружения
+│   ├── .env.example              # Шаблон .env
 │   ├── package.json
-│   └── vite.config.ts
+│   ├── tsconfig.json
+│   └── jest.config.ts
+├── client/                       # Frontend (React + Vite)
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Header.tsx / .css
+│   │   │   ├── OrderModal.tsx / .css
+│   │   │   ├── ProductCard.tsx / .css
+│   │   │   └── StatusBadge.tsx / .css
+│   │   ├── pages/
+│   │   │   ├── ShopPage.tsx          # Каталог товаров
+│   │   │   ├── PaymentPage.tsx       # Страница оплаты (PCI DSS)
+│   │   │   ├── ReceiptPage.tsx       # Чек об оплате
+│   │   │   ├── SuccessPage.tsx       # Успешная оплата
+│   │   │   ├── CancelPage.tsx        # Отмена оплаты
+│   │   │   └── ...
+│   │   ├── services/
+│   │   │   └── api.ts                # API-клиент (fetch wrapper)
+│   │   ├── types/
+│   │   │   └── index.ts              # TypeScript типы
+│   │   ├── App.tsx
+│   │   ├── main.tsx
+│   │   └── index.css
+│   ├── vite.config.ts              # Vite + proxy /api
+│   ├── package.json
+│   └── tsconfig.json
+├── docs/
+│   └── screenshots/                # Скриншоты для README
+├── package.json                    # Workspace root
 └── README.md
 ```
 
-## Быстрый старт
+## 🚀 Быстрый старт
 
 ### 1. Установка зависимостей
 
-```bash
-# Backend
-cd server
-npm install
-
-# Frontend
-cd ../client
+```powershell
+# Установка всех зависимостей (workspaces)
 npm install
 ```
 
 ### 2. Настройка базы данных
 
-```bash
-cd ../server
+```powershell
+cd server
 npx prisma migrate dev --name init
 ```
 
-Это создаст SQLite-базу и таблицу `orders`.
-
 ### 3. Настройка переменных окружения
 
-```bash
-cd ../server
-cp .env.example .env
+```powershell
+cd server
+Copy-Item .env.example .env
 # Отредактируйте .env при необходимости
 ```
 
 ### 4. Запуск
 
-Откройте **два терминала**:
+**Вариант A — Один терминал (рекомендуется):**
 
-**Терминал 1 — Backend (порт 5000):**
-```bash
-cd server
+```powershell
 npm run dev
 ```
 
-**Терминал 2 — Frontend (порт 5173):**
-```bash
+Запустит и backend (порт 5000), и frontend (порт 5173) параллельно.
+
+**Вариант B — Два терминала:**
+
+```powershell
+# Терминал 1 — Backend
+cd server
+npm run dev
+
+# Терминал 2 — Frontend
 cd client
 npm run dev
 ```
 
 Откройте http://localhost:5173 в браузере.
 
-## API
+## 🔌 API
 
 | Метод | Эндпоинт | Описание |
 |-------|----------|----------|
-| POST | `/api/orders` | Создать черновик заказа (productId + email, цена берётся с бэкенда) |
+| GET | `/api/products` | Получить каталог товаров |
+| POST | `/api/orders` | Создать заказ (productId + email) |
 | GET | `/api/orders/:id` | Получить статус заказа |
-| POST | `/api/payments/create-intent` | Создать платёж, получить URL для оплаты |
-| POST | `/api/payments/mock/process` | Обработка оплаты через Mock-шлюз (ввод карты) |
-| GET | `/api/payments/mock/receipt/:orderId` | Получение данных чека после оплаты |
-| POST | `/api/payments/webhook` | Вебхук ЮKassa (payment.succeeded / payment.canceled) |
+| POST | `/api/payments/create-intent` | Создать платёж, получить URL |
+| POST | `/api/payments/mock/process` | Mock-оплата (cardLast4 + outcome) |
+| GET | `/api/payments/mock/receipt/:orderId` | Данные чека |
+| POST | `/api/payments/webhook` | Webhook ЮKassa |
+| GET | `/api/payments/status/:orderId` | Статус заказа (polling) |
+| GET | `/health` | Health check |
 
-## Mock-шлюз (Эмулятор платёжного провайдера)
+## 💳 Система платежей
 
-В проекте реализован локальный эмулятор платёжного шлюза — идеальная демонстрация навыков на собеседовании.
-
-### Как это работает
-
-1. Пользователь нажимает «Купить» в каталоге
-2. Создаётся черновик заказа (статус `PENDING`)
-3. Пользователь перенаправляется на **страницу оплаты** (`/payment`) в стиле банковского шлюза
-4. Вводит данные карты (номер, владелец, срок, CVV)
-5. Сервер валидирует номер по **алгоритму Луна**, проверяет срок действия и CVV
-6. Через **2 секунды** (имитация ответа банка) заказ переводится в статус `PAID`
-7. Пользователь видит **красивый чек** (`/receipt/:orderId`) с деталями платежа
-
-### Паттерн Adapter
+### Adapter Pattern
 
 ```
 PaymentService (Adapter)
-├── PAYMENT_MODE=mock  →  MockPaymentService  (эмулятор банка)
-└── PAYMENT_MODE=yookassa  →  YooKassa API  (боевой провайдер)
+├── PAYMENT_MODE=mock     → MockPaymentService (эмулятор банка)
+└── PAYMENT_MODE=yookassa → ЮKassa API v3 (REST)
 ```
 
-Для переключения на боевой банк достаточно изменить один флаг в `.env`:
+Переключение режима — одна переменная в `.env`:
 
 ```env
 PAYMENT_MODE=mock           # ← локальный эмулятор (по умолчанию)
 PAYMENT_MODE=yookassa       # ← ЮKassa
 ```
+
+### Mock-шлюз (PCI DSS compliant)
+
+- Клиент **не отправляет** полные номера карт на сервер
+- На сервер уходят только `cardLast4` (4 цифры) и `outcome` (success/fail)
+- Валидация номера карты по **алгоритму Луна** на клиенте
+- Имитация задержки банка: **2 секунды**
+- Защита от дублирования: проверка статуса заказа перед обработкой
+
+### ЮKassa интеграция
+
+- Создание платежа через REST API v3
+- **Idempotency Key** — защита от двойных списаний
+- Webhook-обработчик с верификацией подписи (Content-MD5)
+- **Двойная верификация** — проверка платежа напрямую через API ЮKassa
+- **Сверка сумм** — копейка в копейку (сравнение amount из webhook и заказа)
+- Защита от дублирования webhook (проверка текущего статуса заказа)
+- Синхронизация статуса через polling (SuccessPage)
 
 ### Тестовые карты (валидные по Луну)
 
@@ -146,38 +256,67 @@ PAYMENT_MODE=yookassa       # ← ЮKassa
 | VTB | `2200 0000 0000 0003` |
 | Alfa-Bank | `5469 0000 0000 0003` |
 
-Любой срок действия в будущем + любые 3 цифры CVV.
+Любой срок в будущем + любые 3 цифры CVV.
 
-### Архитектура Mock-шлюза
+## 🔒 Безопасность
 
-**Backend:**
-- `services/mock-payment.service.ts` — эмулятор банка: валидация по Луну, проверка срока/CVV, задержка 2 сек, обновление статуса заказа
-- `services/payment.service.ts` — Adapter: делегирует mock/yookassa в зависимости от `PAYMENT_MODE`
-- `controllers/payment.controller.ts` — эндпоинты `mock/process` и `mock/receipt/:orderId`
+| Механизм | Реализация |
+|----------|------------|
+| Helmet | Защита HTTP headers (CSP, X-Frame-Options, и др.) |
+| Rate Limiting | 100 запросов/15мин (общий), 10 заказов/15мин (orders) |
+| CORS | Разрешён только `CLIENT_URL` |
+| Zod валидация | Все входные данные валидируются декларативно |
+| PCI DSS | Полные номера карт не отправляются на сервер |
+| Idempotency | Ключи для защиты от двойных платежей |
+| Webhook verification | Content-MD5 + двойная проверка через API |
+| Amount mismatch | Сверка суммы платежа с суммой заказа |
+| Email masking | Первая буква + `***@domain` в чеке |
 
-**Frontend:**
-- `pages/PaymentPage.tsx` — страница ввода карты в стиле банковского шлюза
-- `pages/ReceiptPage.tsx` — чек после оплаты с деталями транзакции
-- `components/OrderModal.tsx` — оформление заказа → редирект на `/payment`
+## 🗄 Модель данных
 
-## Интеграция с ЮKassa
+```prisma
+model Order {
+  id              String       @id @default(cuid())
+  title           String
+  price           Decimal
+  currency        String       @default("RUB")
+  status          OrderStatus  @default(PENDING)
+  customerEmail   String
+  paymentId       String?      @unique
+  idempotencyKey  String?      @unique
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
 
-В файле `server/src/services/payment.service.ts` находится полная интеграция с ЮKassa:
+model Payment {
+  id                String       @id @default(uuid())
+  orderId           String
+  externalPaymentId String?      @unique
+  provider          String       @default("mock")
+  status            OrderStatus  @default(PENDING)
+  amount            Decimal
+  currency          String       @default("RUB")
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+}
+```
 
-1. Установите `PAYMENT_MODE=yookassa` в `.env`
-2. Заполните `YOOKASSA_SHOP_ID` и `YOOKASSA_SECRET_KEY`
-3. Активируйте webhook-URL в кабинете ЮKassa
-4. Код уже готов — раскомментировать не нужно
+**Статусы заказа:** `PENDING` → `PAID` / `CANCELED`
 
-## Статусы заказа
+## 🧪 Тесты
 
-- **PENDING** — черновик, ожидает оплаты
-- **PAID** — оплата прошла успешно
-- **CANCELED** — оплата отменена
+```powershell
+cd server
+npm test              # Запуск тестов
+npm run test:watch    # Watch-режим
+npm run test:coverage # Отчёт покрытия
+```
 
-## Переход на PostgreSQL
+Покрытие: сервисы (Order, Payment, MockPayment, Catalog), валидаторы (Zod-схемы).
 
-Для production замените провайдер в `prisma/schema.prisma`:
+## 🔄 Переключение на PostgreSQL
+
+Для продакшена замените провайдер в `prisma/schema.prisma`:
 
 ```prisma
 datasource db {
@@ -187,6 +326,61 @@ datasource db {
 ```
 
 И укажите строку подключения в `.env`:
-```
+
+```env
 DATABASE_URL="postgresql://user:password@localhost:5432/frigoship"
 ```
+
+## 📱 Роуты фронтенда
+
+| Маршрут | Страница | Описание |
+|---------|----------|----------|
+| `/` | ShopPage | Каталог товаров |
+| `/payment?orderId=:id` | PaymentPage | Форма оплаты |
+| `/receipt/:orderId` | ReceiptPage | Чек об оплате |
+| `/success` | SuccessPage | Успешная оплата |
+| `/cancel` | CancelPage | Отмена оплаты |
+
+## 🏗 Паттерны проектирования
+
+| Паттерн | Где используется |
+|---------|-----------------|
+| **Adapter** | PaymentService — делегирование mock/yookassa |
+| **Repository** | OrderService, CatalogService — абстракция над Prisma |
+| **Dependency Injection** | Сервисы принимают зависимости через конструктор (для тестирования) |
+| **Validation Schema** | Zod-схемы в `validators.ts` — единая точка валидации |
+| **Layered Architecture** | Controller → Service → Data Access |
+
+## 📸 Демонстрация
+
+### Каталог товаров
+<img src="docs/screenshots/step_2.png" alt="Каталог товаров" width="600">
+*Шаг 2 — Страница каталога*
+
+### Оформление заказа
+<img src="docs/screenshots/step_3.png" alt="Оформление заказа" width="600">
+*Шаг 3 — Создание заказа*
+
+### Страница оплаты
+<img src="docs/screenshots/step_4.png" alt="Страница оплаты" width="600">
+*Шаг 4 — Форма ввода карты (Mock-шлюз)*
+
+### Успешная оплата
+<img src="docs/screenshots/step_5.png" alt="Успешная оплата" width="600">
+*Шаг 5 — Подтверждение оплаты*
+
+### Отказ в оплате
+<img src="docs/screenshots/step_6.png" alt="Недостаточно средств" width="600">
+*Шаг 6 — Недостаточно средств*
+
+### Неверные данные карты
+<img src="docs/screenshots/step_7.png" alt="Неверные данные карты" width="600">
+*Шаг 7 — Неверные данные карты*
+
+## 📊 Метрики проекта
+
+| Метрика | Значение |
+|---------|----------|
+| TypeScript файлы | 25 |
+| TSX файлы | 11 |
+| Всего строк | ~3,550 |
