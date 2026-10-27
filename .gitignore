@@ -20,6 +20,9 @@ prisma/migrations/
 *.swp
 *.swo
 
+# GigaCode
+.gigacode_vsc/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -27,3 +30,4 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+server/.tunnel-url
