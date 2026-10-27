@@ -19,6 +19,11 @@ router.get('/mock/receipt/:orderId', (req: Request, res: Response) =>
   paymentController.getReceipt(req, res)
 );
 
+// Получение статуса заказа для polling
+router.get('/status/:orderId', (req: Request, res: Response) =>
+  paymentController.getOrderStatus(req, res)
+);
+
 // Webhook требует raw body для проверки Content-MD5 подписи
 router.post(
   '/webhook',

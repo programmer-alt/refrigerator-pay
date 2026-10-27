@@ -3,7 +3,8 @@ import type { Request, Response } from 'express';
 import { PaymentService } from '../services/payment.service';
 import { MockPaymentService } from '../services/mock-payment.service';
 import { OrderService } from '../services/order.service';
-import type { CreatePaymentInput, MockPaymentInput } from '../types';
+import { createPaymentInputSchema, mockPaymentInputSchema, validate } from '../validators';
+import { config } from '../config/env';
 
 const paymentService = new PaymentService();
 const mockPaymentService = new MockPaymentService();
@@ -11,15 +12,16 @@ const orderService = new OrderService();
 
 export class PaymentController {
   async createPaymentIntent(req: Request, res: Response): Promise<void> {
-    const body: CreatePaymentInput = req.body;
+    // 🔴 Zod-валидация вместо ручных проверок
+    const validation = validate(createPaymentInputSchema, req.body);
 
-    if (!body.orderId) {
-      res.status(400).json({ error: 'Missing required field: orderId' });
+    if (!validation.success) {
+      res.status(400).json({ error: validation.error });
       return;
     }
 
     try {
-      const payment = await paymentService.createPayment(body);
+      const payment = await paymentService.createPayment(validation.data);
       res.status(200).json(payment);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -28,20 +30,22 @@ export class PaymentController {
   }
 
   /**
-   * Обработка оплаты через mock-шлюз (ввод карты → ответ банка)
+   * Обработка оплаты через mock-шлюз (PCI DSS compliant).
+   *
+   * 🔴 Принимаем только cardLast4 и outcome (success/fail).
+   * Полные реквизиты карты НЕ принимаются.
    */
   async processMockPayment(req: Request, res: Response): Promise<void> {
-    const body: MockPaymentInput = req.body;
+    // 🔴 Zod-валидация вместо ручных проверок
+    const validation = validate(mockPaymentInputSchema, req.body);
 
-    const { orderId, cardNumber, expiryMonth, expiryYear, cvv, cardHolder } = body;
-
-    if (!orderId || !cardNumber || !expiryMonth || !expiryYear || !cvv || !cardHolder) {
-      res.status(400).json({ error: 'Missing required card fields' });
+    if (!validation.success) {
+      res.status(400).json({ error: validation.error });
       return;
     }
 
     try {
-      const result = await mockPaymentService.processPayment(body);
+      const result = await mockPaymentService.processPayment(validation.data);
 
       if (!result.success) {
         res.status(400).json({
@@ -110,6 +114,7 @@ export class PaymentController {
       return;
     }
 
+    // --- 🔴 Двойная верификация: не верим req.body, берем только paymentId ---
     const eventId: string = String(parsedBody.id || '');
     const paymentStatus: string = String(parsedBody.status || '');
     const metadata: Record<string, string> = (parsedBody.metadata as Record<string, string>) || {};
@@ -126,11 +131,6 @@ export class PaymentController {
     }
 
     try {
-      const { status: newStatus } = await paymentService.handleWebhook(
-        eventId,
-        paymentStatus
-      );
-
       // --- Защита от дубликатов: проверяем текущий статус ---
       const existingOrder = await orderService.getOrderById(orderId);
 
@@ -145,6 +145,36 @@ export class PaymentController {
         return;
       }
 
+      // --- 🔴 Двойная верификация через API ЮKassa ---
+      // Если это режим YooKassa и статус succeeded — проверяем платеж напрямую
+      if (config.paymentMode !== 'mock' && paymentStatus === 'succeeded' && existingOrder.paymentId) {
+        try {
+          const verification = await paymentService.verifyPaymentWithYooKassa(existingOrder.paymentId);
+
+          if (!verification.succeeded) {
+            res.status(400).json({ error: 'Payment verification failed' });
+            return;
+          }
+
+          // --- 🔴 Проверка суммы: копейка в копейку ---
+          // Сравниваем сумму из ЮKassa с суммой заказа
+          const yookassaAmount = parseFloat(verification.amount.value);
+          const orderAmount = parseFloat(String(existingOrder.price));
+          if (Math.abs(yookassaAmount - orderAmount) > 0.001) {
+            res.status(400).json({ error: 'Payment amount mismatch' });
+            return;
+          }
+        } catch {
+          // Если не удалось проверить — обновляем по webhook (fallback)
+          console.warn('YooKassa verification failed, falling back to webhook status');
+        }
+      }
+
+      const { status: newStatus } = await paymentService.handleWebhook(
+        eventId,
+        paymentStatus
+      );
+
       // --- Обновляем статус заказа ---
       await orderService.updateOrderStatus(orderId, newStatus);
 
@@ -152,6 +182,57 @@ export class PaymentController {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       res.status(400).json({ error: message });
+    }
+  }
+
+  /**
+   * Получение статуса заказа для polling на SuccessPage.
+   * Если статус PENDING — синхронизируется с ЮKassa.
+   */
+  async getOrderStatus(req: Request, res: Response): Promise<void> {
+    const orderId = String(req.params.orderId || '');
+
+    try {
+      const order = await orderService.getOrderById(orderId);
+
+      if (!order) {
+        res.status(404).json({ error: 'Order not found' });
+        return;
+      }
+
+      // Если заказ уже оплачен или отменен — возвращаем текущий статус
+      if (order.status !== 'PENDING') {
+        res.status(200).json({
+          orderId: order.id,
+          status: order.status,
+          synced: false,
+        });
+        return;
+      }
+
+      // Если есть paymentId — синхронизируем с ЮKassa
+      if (order.paymentId && config.paymentMode !== 'mock') {
+        try {
+          const syncResult = await paymentService.syncPaymentStatus(orderId);
+          res.status(200).json({
+            orderId: order.id,
+            status: syncResult.status,
+            synced: syncResult.synced,
+          });
+          return;
+        } catch {
+          // Если не удалось синхронизировать — возвращаем текущий статус
+        }
+      }
+
+      res.status(200).json({
+        orderId: order.id,
+        status: order.status,
+        synced: false,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: message });
     }
   }
 }

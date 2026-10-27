@@ -29,11 +29,8 @@ export interface CreatePaymentResponse {
 
 export interface MockPaymentInput {
   orderId: string;
-  cardNumber: string;
-  expiryMonth: string;
-  expiryYear: string;
-  cvv: string;
-  cardHolder: string;
+  cardLast4: string;
+  outcome: 'success' | 'fail';
 }
 
 export interface MockPaymentResponse {
@@ -56,6 +53,7 @@ export interface ReceiptResponse {
   paymentDate: string;
   status: string;
   event: string;
+  customerEmail?: string;
 }
 
 export interface WebhookPaymentData {
