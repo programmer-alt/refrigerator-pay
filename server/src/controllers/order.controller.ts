@@ -1,16 +1,14 @@
 import type { Request, Response } from 'express';
 import { OrderService } from '../services/order.service';
 import { CatalogService } from '../services/catalog.service';
-import { PrismaClient } from '@prisma/client';
 import { createOrderInputSchema, validate } from '../validators';
 
-const prisma = new PrismaClient();
 const orderService = new OrderService();
 const catalogService = new CatalogService();
 
 export class OrderController {
   /**
-   * Создание заказа с Zod-валидацией и защитой от race condition.
+   * Создание заказа с Zod-валидацией.
    */
   async createOrder(req: Request, res: Response): Promise<void> {
     // 🔴 Zod-валидация вместо ручных проверок
@@ -32,19 +30,15 @@ export class OrderController {
     }
 
     try {
-      // 🔒 Атомарное создание заказа в транзакции
-      const order = await prisma.$transaction(async (tx) => {
-        return await tx.order.create({
-          data: {
-            title: catalogProduct.title,
-            price: catalogProduct.price,
-            currency: catalogProduct.currency,
-            customerEmail,
-          },
-        });
+      // Создание заказа через OrderService (in-memory)
+      const order = await orderService.createOrder({
+        title: catalogProduct.title,
+        price: catalogProduct.price,
+        currency: catalogProduct.currency,
+        customerEmail,
       });
 
-      res.status(201).json(orderService.toDto(order));
+      res.status(201).json(order);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       res.status(400).json({ error: message });
