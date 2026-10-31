@@ -1,17 +1,19 @@
-# FrigoShop — Интернет-магазин холодильников
+# FrigoShop — Демо-платёжная система
 
-Пет-проект интернет-магазина бытовой техники с полной интеграцией онлайн-оплаты (ЮKassa) и локальным эмулятором платёжного шлюза.
+Пет-проект демонстрационной платёжной системы с полной интеграцией онлайн-оплаты (ЮKassa) и локальным эмулятором платёжного шлюза. Каталог товаров захардкожен для демонстрации процесса оплаты.
+
+**Ключевая особенность:** валидация карт по **алгоритму Луна** на клиенте. Клиент проверяет номер карты локально, определяет outcome (success/fail) и отправляет на сервер только `cardLast4` (4 последние цифры). Полные реквизиты карт **никогда не покидают браузер** — это PCI DSS compliant архитектура.
 
 ## 🛠 Стек технологий
 
 ### Backend
 - **Runtime:** Node.js + TypeScript
 - **Framework:** Express.js 5
-- **ORM:** Prisma (SQLite для разработки, PostgreSQL для продакшена)
+- **Хранение:** In-memory Map (заказы хранятся в оперативной памяти)
 - **Валидация:** Zod 4 (декларативная валидация всех входных данных)
 - **Безопасность:** Helmet (HTTP headers), CORS, express-rate-limit
 - **Тесты:** Jest + Supertest
-- **Dev-инструменты:** tsx (hot reload), Prisma Studio
+- **Dev-инструменты:** tsx (hot reload)
 
 ### Frontend
 - **Framework:** React 19 + TypeScript
@@ -51,20 +53,10 @@
 │  ┌────────────────────┴────────────────────────────────┐   │
 │  │              Services Layer                          │   │
 │  │  OrderService  │  PaymentService  │  CatalogService  │   │
-│  │                │  (Adapter Pattern)                   │   │
+│  │  (in-memory Map) │  (Adapter Pattern)               │   │
 │  │                │  ├── MockPaymentService              │   │
 │  │                │  └── YooKassa API (direct fetch)     │   │
-│  └────────────────────┬────────────────────────────────┘   │
-│                       │                                     │
-│  ┌────────────────────┴────────────────────────────────┐   │
-│  │              Data Access Layer                       │   │
-│  │              Prisma Client                           │   │
-│  └────────────────────┬────────────────────────────────┘   │
-│                       │                                     │
-│              ┌────────┴────────┐                            │
-│              │   Database      │                            │
-│              │  SQLite / PG    │                            │
-│              └─────────────────┘                            │
+│  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -74,8 +66,7 @@
 Request → Middleware (Helmet, Rate Limit, CORS, Logging)
         → Router (catalog, order, payment)
         → Controller (Zod validation)
-        → Service (business logic)
-        → Prisma (data access)
+        → Service (business logic + in-memory storage)
         → Response
 ```
 
@@ -84,10 +75,6 @@ Request → Middleware (Helmet, Rate Limit, CORS, Logging)
 ```
 refrigerator-pay/
 ├── server/                     # Backend (Express + TypeScript)
-│   ├── prisma/
-│   │   ├── schema.prisma       # Модели: Order, Payment
-│   │   ├── migrations/         # Миграции Prisma
-│   │   └── dev.db              # SQLite база (dev)
 │   ├── src/
 │   │   ├── config/
 │   │   │   └── env.ts          # Конфигурация (.env)
@@ -159,14 +146,7 @@ refrigerator-pay/
 npm install
 ```
 
-### 2. Настройка базы данных
-
-```powershell
-cd server
-npx prisma migrate dev --name init
-```
-
-### 3. Настройка переменных окружения
+### 2. Настройка переменных окружения
 
 ```powershell
 cd server
@@ -174,7 +154,7 @@ Copy-Item .env.example .env
 # Отредактируйте .env при необходимости
 ```
 
-### 4. Запуск
+### 3. Запуск
 
 **Вариант A — Один терминал (рекомендуется):**
 
@@ -231,9 +211,38 @@ PAYMENT_MODE=yookassa       # ← ЮKassa
 
 ### Mock-шлюз (PCI DSS compliant)
 
-- Клиент **не отправляет** полные номера карт на сервер
-- На сервер уходят только `cardLast4` (4 цифры) и `outcome` (success/fail)
-- Валидация номера карты по **алгоритму Луна** на клиенте
+Сервер **никогда не видит полные номера карт**. Клиент валидирует карту локально через алгоритм Луна и отправляет на сервер только `cardLast4` (4 последние цифры) и `outcome` (success/fail).
+
+#### Алгоритм Луна
+
+Алгоритм Луна — стандартная формула для проверки валидности номеров платёжных карт. Работает полностью на клиенте:
+
+1. Берём номер карты и идём **справа налево**
+2. Каждую **вторую цифру умножаем на 2**
+3. Если результат > 9 — **вычитаем 9**
+4. **Складываем все цифры**
+5. Если сумма делится на 10 — карта валидна
+
+**Пример с `4111 1111 1111 1111`:**
+
+```
+Цифры:        4  1  1  1  1  1  1  1  1  1  1  1  1  1  1  1
+Двойные:      8  1  2  1  2  1  2  1  2  1  2  1  2  1  2  1
+Сумма: 8+1+2+1+2+1+2+1+2+1+2+1+2+1+2+1 = 30
+30 % 10 === 0 ✅ Валидна
+```
+
+**Поток оплаты:**
+
+```
+Пользователь вводит карту → Луна проверяет → outcome
+        ↓
+    Если валидна → outcome = 'success' → оплата проходит
+    Если не валидна → outcome = 'fail' → отказ
+        ↓
+    На сервер отправляется только cardLast4 + outcome
+```
+
 - Имитация задержки банка: **2 секунды**
 - Защита от дублирования: проверка статуса заказа перед обработкой
 
@@ -249,14 +258,16 @@ PAYMENT_MODE=yookassa       # ← ЮKassa
 
 ### Тестовые карты (валидные по Луну)
 
-| Банк | Номер |
-|------|-------|
-| SberBank | `4111 1111 1111 1111` |
-| Tinkoff | `5213 0000 0000 0002` |
-| VTB | `2200 0000 0000 0003` |
-| Alfa-Bank | `5469 0000 0000 0003` |
+| Банк | Номер | Проверка |
+|------|-------|----------|
+| SberBank | `4111 1111 1111 1111` | ✅ Сумма = 30, 30 % 10 = 0 |
+| Tinkoff | `5213 0000 0000 0002` | ✅ Сумма = 20, 20 % 10 = 0 |
+| VTB | `2200 0000 0000 0003` | ✅ Сумма = 30, 30 % 10 = 0 |
+| Alfa-Bank | `5469 0000 0000 0003` | ✅ Сумма = 20, 20 % 10 = 0 |
 
-Любой срок в будущем + любые 3 цифры CVV.
+Любой срок действия в будущем + любые 3 цифры CVV.
+
+Любой **невалидный** номер карты (например `1234 5678 9012 3456`) → `outcome = 'fail'` → отказ в оплате.
 
 ## 🔒 Безопасность
 
@@ -272,37 +283,6 @@ PAYMENT_MODE=yookassa       # ← ЮKassa
 | Amount mismatch | Сверка суммы платежа с суммой заказа |
 | Email masking | Первая буква + `***@domain` в чеке |
 
-## 🗄 Модель данных
-
-```prisma
-model Order {
-  id              String       @id @default(cuid())
-  title           String
-  price           Decimal
-  currency        String       @default("RUB")
-  status          OrderStatus  @default(PENDING)
-  customerEmail   String
-  paymentId       String?      @unique
-  idempotencyKey  String?      @unique
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-}
-
-model Payment {
-  id                String       @id @default(uuid())
-  orderId           String
-  externalPaymentId String?      @unique
-  provider          String       @default("mock")
-  status            OrderStatus  @default(PENDING)
-  amount            Decimal
-  currency          String       @default("RUB")
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-}
-```
-
-**Статусы заказа:** `PENDING` → `PAID` / `CANCELED`
-
 ## 🧪 Тесты
 
 ```powershell
@@ -313,23 +293,6 @@ npm run test:coverage # Отчёт покрытия
 ```
 
 Покрытие: сервисы (Order, Payment, MockPayment, Catalog), валидаторы (Zod-схемы).
-
-## 🔄 Переключение на PostgreSQL
-
-Для продакшена замените провайдер в `prisma/schema.prisma`:
-
-```prisma
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-```
-
-И укажите строку подключения в `.env`:
-
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/frigoship"
-```
 
 ## 📱 Роуты фронтенда
 
@@ -346,10 +309,10 @@ DATABASE_URL="postgresql://user:password@localhost:5432/frigoship"
 | Паттерн | Где используется |
 |---------|-----------------|
 | **Adapter** | PaymentService — делегирование mock/yookassa |
-| **Repository** | OrderService, CatalogService — абстракция над Prisma |
+| **Repository** | OrderService, CatalogService — in-memory хранилище |
 | **Dependency Injection** | Сервисы принимают зависимости через конструктор (для тестирования) |
 | **Validation Schema** | Zod-схемы в `validators.ts` — единая точка валидации |
-| **Layered Architecture** | Controller → Service → Data Access |
+| **Layered Architecture** | Controller → Service → Response |
 
 ## 📸 Демонстрация
 

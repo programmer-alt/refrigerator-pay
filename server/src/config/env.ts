@@ -4,7 +4,6 @@ dotenv.config();
 
 interface Config {
   port: number;
-  databaseUrl: string;
   clientUrl: string;
   paymentMode: 'mock' | 'yookassa';
   yookassa: {
@@ -27,7 +26,6 @@ function getEnvVar(name: string, fallback?: string): string {
 
 export const config: Config = {
   port: parseInt(getEnvVar('PORT', '5000'), 10),
-  databaseUrl: getEnvVar('DATABASE_URL'),
   clientUrl: getEnvVar('CLIENT_URL', 'http://localhost:5173'),
   paymentMode: (getEnvVar('PAYMENT_MODE', 'mock') as 'mock' | 'yookassa') || 'mock',
   yookassa: {
