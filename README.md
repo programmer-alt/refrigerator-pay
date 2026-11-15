@@ -28,113 +28,176 @@
 
 ## 📐 Архитектура
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Browser (React Client)                   │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
-│  │  Shop    │ │ Payment  │ │ Receipt  │ │ Success  │       │
-│  │  Page    │ │  Page    │ │  Page    │ │  Page    │       │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
-│         │              │              │                     │
-│         └──────────────┴──────────────┘                     │
-│                         │                                   │
-│                   fetchJson()                               │
-│                   /api/* (Vite proxy)                       │
-└─────────────────────────┼───────────────────────────────────┘
-                          │ HTTP
-┌─────────────────────────┼───────────────────────────────────┐
-│                Backend (Express Server)                      │
-│                         │                                   │
-│  ┌──────────────────────┴──────────────────────────────┐   │
-│  │              Controllers Layer                       │   │
-│  │  OrderController  │  PaymentController               │   │
-│  └────────────────────┬────────────────────────────────┘   │
-│                       │                                     │
-│  ┌────────────────────┴────────────────────────────────┐   │
-│  │              Services Layer                          │   │
-│  │  OrderService  │  PaymentService  │  CatalogService  │   │
-│  │  (in-memory Map) │  (Adapter Pattern)               │   │
-│  │                │  ├── MockPaymentService              │   │
-│  │                │  └── YooKassa API (direct fetch)     │   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
+```mermaid
+graph TB
+    subgraph Browser["🌐 Browser (React Client)"]
+        direction LR
+        Shop["🏪 ShopPage<br/>Каталог товаров"]
+        Pay["💳 PaymentPage<br/>Форма оплаты"]
+        Receipt["🧾 ReceiptPage<br/>Чек об оплате"]
+        Success["✅ SuccessPage<br/>Успешная оплата"]
+        Cancel["❌ CancelPage<br/>Отмена оплаты"]
+    end
 
-### Слои приложения
+    Shop -->|"fetchJson() /api/*<br/>Vite proxy"| Backend
+    Pay -->|"cardLast4 + outcome<br/>PCI DSS compliant"| Backend
+    Receipt --> Backend
+    Success -->|"polling /status"| Backend
+    Cancel --> Backend
 
-```
-Request → Middleware (Helmet, Rate Limit, CORS, Logging)
-        → Router (catalog, order, payment)
-        → Controller (Zod validation)
-        → Service (business logic + in-memory storage)
-        → Response
+    subgraph Backend["⚙️ Backend (Express Server)"]
+        direction TB
+
+        subgraph Middleware["Middleware"]
+            Helmet["Helmet<br/>HTTP headers"]
+            RateLimit["Rate Limit<br/>100 req/15min"]
+            CORS["CORS"]
+            Logging["Logging"]
+        end
+
+        subgraph Router["Router"]
+            CatRoutes["catalog.routes"]
+            OrdRoutes["order.routes"]
+            PayRoutes["payment.routes"]
+        end
+
+        subgraph Controllers["Controllers Layer"]
+            CatCtrl["CatalogController"]
+            OrdCtrl["OrderController"]
+            PayCtrl["PaymentController"]
+        end
+
+        subgraph Validators["Zod Validation"]
+            ZodSchemas["📋 validators.ts<br/>Deklarative schemas"]
+        end
+
+        subgraph Services["Services Layer"]
+            CatSvc["CatalogService<br/>in-memory Map"]
+            OrdSvc["OrderService<br/>in-memory Map"]
+            PaySvc["PaymentService<br/>Adapter Pattern"]
+
+            subgraph PayImpl["Payment Implementations"]
+                MockSvc["MockPaymentService<br/>эмулятор банка 2 сек"]
+                YooKassa["ЮKassa API v3<br/>REST + Webhook"]
+            end
+        end
+    end
+
+    Browser -->|"HTTP /api/*"| Backend
+
+    Shop -.-> CatRoutes
+    Pay -.-> PayRoutes
+    Receipt -.-> OrdRoutes
+    Success -.-> OrdRoutes
+    Cancel -.-> OrdRoutes
+
+    CatRoutes --> CatCtrl
+    OrdRoutes --> OrdCtrl
+    PayRoutes --> PayCtrl
+
+    CatCtrl --> ZodSchemas
+    OrdCtrl --> ZodSchemas
+    PayCtrl --> ZodSchemas
+
+    CatCtrl --> CatSvc
+    OrdCtrl --> OrdSvc
+    PayCtrl --> PaySvc
+
+    PaySvc --> MockSvc
+    PaySvc --> YooKassa
+
+    Middleware -.->|"Pipeline"| Router
+    Router -.-> Controllers
+    Controllers -.-> Validators
+    Validators -.-> Services
+
+    style Browser fill:#e1f5fe
+    style Backend fill:#f3e5f5
+    style Middleware fill:#fff3e0
+    style Controllers fill:#e8f5e9
+    style Services fill:#e8f5e9
+    style PayImpl fill:#fce4ec
 ```
 
 ## 🏗 Структура проекта
 
-```
-refrigerator-pay/
-├── server/                     # Backend (Express + TypeScript)
-│   ├── src/
-│   │   ├── config/
-│   │   │   └── env.ts          # Конфигурация (.env)
-│   │   ├── controllers/
-│   │   │   ├── catalog.controller.ts
-│   │   │   ├── order.controller.ts
-│   │   │   └── payment.controller.ts
-│   │   ├── services/
-│   │   │   ├── catalog.service.ts
-│   │   │   ├── order.service.ts
-│   │   │   ├── payment.service.ts      # Adapter Pattern
-│   │   │   └── mock-payment.service.ts # Эмулятор банка
-│   │   ├── routes/
-│   │   │   ├── catalog.routes.ts
-│   │   │   ├── order.routes.ts
-│   │   │   └── payment.routes.ts
-│   │   ├── types/
-│   │   │   └── index.ts          # DTO, интерфейсы
-│   │   ├── validators.ts         # Zod-схемы валидации
-│   │   └── index.ts              # Точка входа
-│   ├── __tests__/                # Unit-тесты
-│   │   ├── catalog.service.test.ts
-│   │   ├── mock-payment.service.test.ts
-│   │   ├── order.service.test.ts
-│   │   ├── payment.service.test.ts
-│   │   ├── validators.test.ts
-│   │   └── setup.ts
-│   ├── .env                      # Переменные окружения
-│   ├── .env.example              # Шаблон .env
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── jest.config.ts
-├── client/                       # Frontend (React + Vite)
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Header.tsx / .css
-│   │   │   ├── OrderModal.tsx / .css
-│   │   │   ├── ProductCard.tsx / .css
-│   │   │   └── StatusBadge.tsx / .css
-│   │   ├── pages/
-│   │   │   ├── ShopPage.tsx          # Каталог товаров
-│   │   │   ├── PaymentPage.tsx       # Страница оплаты (PCI DSS)
-│   │   │   ├── ReceiptPage.tsx       # Чек об оплате
-│   │   │   ├── SuccessPage.tsx       # Успешная оплата
-│   │   │   ├── CancelPage.tsx        # Отмена оплаты
-│   │   │   └── ...
-│   │   ├── services/
-│   │   │   └── api.ts                # API-клиент (fetch wrapper)
-│   │   ├── types/
-│   │   │   └── index.ts              # TypeScript типы
-│   │   ├── App.tsx
-│   │   ├── main.tsx
-│   │   └── index.css
-│   ├── vite.config.ts              # Vite + proxy /api
-│   ├── package.json
-│   └── tsconfig.json
-├── docs/
-│   └── screenshots/                # Скриншоты для README
-├── package.json                    # Workspace root
-└── README.md
+```mermaid
+mindmap
+  root((refrigerator-pay))
+    server
+      Backend
+      Express + TypeScript
+      src
+        index.ts
+        validators.ts
+        config
+          env.ts
+        controllers
+          catalog.controller.ts
+          order.controller.ts
+          payment.controller.ts
+        services
+          catalog.service.ts
+          order.service.ts
+          payment.service.ts
+          mock-payment.service.ts
+        routes
+          catalog.routes.ts
+          order.routes.ts
+          payment.routes.ts
+        types
+          index.ts
+        __tests__
+          catalog.service.test.ts
+          mock-payment.service.test.ts
+          order.service.test.ts
+          payment.service.test.ts
+          validators.test.ts
+          setup.ts
+      .env
+      .env.example
+      package.json
+      tsconfig.json
+      jest.config.ts
+    client
+      Frontend
+      React + Vite
+      src
+        main.tsx
+        App.tsx
+        index.css
+        App.css
+        vite-env.d.ts
+        components
+          Header.tsx
+          ProductCard.tsx
+          OrderModal.tsx
+          StatusBadge.tsx
+        pages
+          ShopPage.tsx
+          PaymentPage.tsx
+          ReceiptPage.tsx
+          SuccessPage.tsx
+          CancelPage.tsx
+        services
+          api.ts
+        types
+          index.ts
+      index.html
+      vite.config.ts
+      package.json
+      tsconfig.json
+    docs
+      screenshots
+        step_2.png
+        step_3.png
+        step_4.png
+        step_5.png
+        step_6.png
+        step_7.png
+      order-flow.html
+    package.json
+    README.md
 ```
 
 ## 🚀 Быстрый старт
