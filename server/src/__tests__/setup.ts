@@ -1,17 +1,4 @@
-// Глобальный мока для Prisma — должен выполняться ДО импорта сервисов
-export const mockPrismaClient: any = {
-  order: {
-    create: jest.fn(),
-    findUnique: jest.fn(),
-    update: jest.fn(),
-    findFirst: jest.fn(),
-  },
-  $transaction: jest.fn((callback: (tx: any) => Promise<any>) => callback(mockPrismaClient)),
-};
-
-jest.mock('@prisma/client', () => ({
-  PrismaClient: jest.fn(() => mockPrismaClient),
-}));
+// Глобальная настройка для тестов — in-memory хранилище
 
 // Clear all mocks between tests
 beforeEach(() => {

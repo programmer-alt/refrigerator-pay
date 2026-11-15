@@ -1,7 +1,4 @@
-import { PrismaClient } from '@prisma/client';
 import type { OrderDto, OrderStatus } from '../types';
-
-const prisma = new PrismaClient();
 
 interface OrderCreateData {
   title: string;
@@ -10,92 +7,83 @@ interface OrderCreateData {
   customerEmail: string;
 }
 
+/**
+ * OrderService — in-memory хранилище заказов.
+ *
+ * Использует Map для хранения заказов в оперативной памяти.
+ * Данные не сохраняются между перезапусками сервера.
+ * Подходит для демо и тестирования без внешней БД.
+ */
 export class OrderService {
-  async createOrder(data: OrderCreateData): Promise<OrderDto> {
-    const order = await prisma.order.create({
-      data: {
-        title: data.title,
-        price: data.price,
-        currency: data.currency,
-        customerEmail: data.customerEmail,
-      },
-    });
+  private orders = new Map<string, OrderDto>();
 
-    return this.toDto(order);
+  async createOrder(data: OrderCreateData): Promise<OrderDto> {
+    const order: OrderDto = {
+      id: `ord_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      title: data.title,
+      price: data.price,
+      currency: data.currency,
+      status: 'PENDING',
+      customerEmail: data.customerEmail,
+      paymentId: null,
+      idempotencyKey: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.orders.set(order.id, order);
+    return order;
   }
 
   async getOrderById(id: string): Promise<OrderDto | null> {
-    const order = await prisma.order.findUnique({
-      where: { id },
-    });
-
-    if (!order) {
-      return null;
-    }
-
-    return this.toDto(order);
+    return this.orders.get(id) ?? null;
   }
 
   async updateOrderStatus(
     orderId: string,
     status: OrderStatus
   ): Promise<OrderDto | null> {
-    const order = await prisma.order.update({
-      where: { id: orderId },
-      data: { status },
-    });
+    const order = this.orders.get(orderId);
+    if (!order) return null;
 
-    return this.toDto(order);
+    const updated: OrderDto = {
+      ...order,
+      status,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.orders.set(orderId, updated);
+    return updated;
   }
 
   async updatePaymentId(orderId: string, paymentId: string): Promise<OrderDto | null> {
-    const order = await prisma.order.update({
-      where: { id: orderId },
-      data: { paymentId },
-    });
+    const order = this.orders.get(orderId);
+    if (!order) return null;
 
-    return this.toDto(order);
+    const updated: OrderDto = {
+      ...order,
+      paymentId,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.orders.set(orderId, updated);
+    return updated;
   }
 
   async updateIdempotencyKey(
     orderId: string,
     idempotencyKey: string
   ): Promise<OrderDto | null> {
-    const order = await prisma.order.update({
-      where: { id: orderId },
-      data: { idempotencyKey },
-    });
+    const order = this.orders.get(orderId);
+    if (!order) return null;
 
-    return this.toDto(order);
-  }
-
-  /**
-   * Конвертирует сырую запись Order в OrderDto.
-   * Публичный для использования в контроллерах.
-   */
-  toDto(order: {
-    id: string;
-    title: string;
-    price: unknown;
-    currency: string;
-    status: OrderStatus;
-    customerEmail: string;
-    paymentId: string | null;
-    idempotencyKey: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }): OrderDto {
-    return {
-      id: order.id,
-      title: order.title,
-      price: Number(order.price),
-      currency: order.currency,
-      status: order.status,
-      customerEmail: order.customerEmail,
-      paymentId: order.paymentId,
-      idempotencyKey: order.idempotencyKey,
-      createdAt: order.createdAt.toISOString(),
-      updatedAt: order.updatedAt.toISOString(),
+    const updated: OrderDto = {
+      ...order,
+      idempotencyKey,
+      updatedAt: new Date().toISOString(),
     };
+
+    this.orders.set(orderId, updated);
+    return updated;
   }
 }

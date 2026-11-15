@@ -2,7 +2,7 @@
   "name": "refrigerator-pay-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Backend for refrigerator online store with YooKassa payment integration",
+  "description": "Demo payment processing system with YooKassa integration",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -10,15 +10,9 @@
     "start": "node dist/index.js",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev --name init",
-    "prisma:seed": "tsx prisma/seed.ts",
-    "prisma:studio": "prisma studio",
-    "db:reset": "prisma migrate reset --force"
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "@prisma/client": "^6.8.2",
     "@types/helmet": "^0.0.48",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
@@ -36,7 +30,6 @@
     "@types/node": "^22.15.3",
     "@types/uuid": "^10.0.0",
     "jest": "^30.5.2",
-    "prisma": "^6.8.2",
     "supertest": "^7.3.1",
     "ts-jest": "^29.4.15",
     "tsx": "^4.19.3",

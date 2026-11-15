@@ -1,50 +1,37 @@
 import { MockPaymentService } from '../services/mock-payment.service';
-import { mockPrismaClient } from '../__tests__/setup';
+import { OrderService } from '../services/order.service';
 
 describe('MockPaymentService', () => {
   let service: MockPaymentService;
+  let orderService: OrderService;
 
   beforeEach(() => {
-    service = new MockPaymentService();
+    orderService = new OrderService();
+    service = new MockPaymentService(orderService);
   });
 
   describe('processPayment', () => {
     it('should process successful payment', async () => {
-      const mockOrder = {
-        id: 'ord_123',
+      const order = await orderService.createOrder({
         title: 'Test Product',
         price: 1000,
         currency: 'RUB',
-        status: 'PENDING' as const,
         customerEmail: 'test@example.com',
-        paymentId: null,
-        idempotencyKey: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      mockPrismaClient.order.findUnique.mockResolvedValue(mockOrder);
-      mockPrismaClient.order.update.mockResolvedValue({
-        ...mockOrder,
-        status: 'PAID' as const,
-        paymentId: 'mock_pay_123',
       });
 
       const result = await service.processPayment({
-        orderId: 'ord_123',
+        orderId: order.id,
         cardLast4: '4242',
         outcome: 'success',
       });
 
       expect(result.success).toBe(true);
-      expect(result.orderId).toBe('ord_123');
+      expect(result.orderId).toBe(order.id);
       expect(result.paymentId).toMatch(/^mock_pay_/);
       expect(result.transactionId).toMatch(/^txn_/);
     });
 
     it('should fail for non-existent order', async () => {
-      mockPrismaClient.order.findUnique.mockResolvedValue(null);
-
       const result = await service.processPayment({
         orderId: 'ord_nonexistent',
         cardLast4: '4242',
@@ -56,23 +43,17 @@ describe('MockPaymentService', () => {
     });
 
     it('should fail for already paid order', async () => {
-      const paidOrder = {
-        id: 'ord_paid',
+      const order = await orderService.createOrder({
         title: 'Test Product',
         price: 1000,
         currency: 'RUB',
-        status: 'PAID' as const,
         customerEmail: 'test@example.com',
-        paymentId: 'pay_123',
-        idempotencyKey: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+      });
 
-      mockPrismaClient.order.findUnique.mockResolvedValue(paidOrder);
+      await orderService.updateOrderStatus(order.id, 'PAID');
 
       const result = await service.processPayment({
-        orderId: 'ord_paid',
+        orderId: order.id,
         cardLast4: '4242',
         outcome: 'success',
       });
@@ -82,21 +63,15 @@ describe('MockPaymentService', () => {
     });
 
     it('should fail with invalid cardLast4 format', async () => {
-      mockPrismaClient.order.findUnique.mockResolvedValue({
-        id: 'ord_123',
+      const order = await orderService.createOrder({
         title: 'Test',
         price: 1000,
         currency: 'RUB',
-        status: 'PENDING' as const,
         customerEmail: 'test@test.com',
-        paymentId: null,
-        idempotencyKey: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
       });
 
       const result = await service.processPayment({
-        orderId: 'ord_123',
+        orderId: order.id,
         cardLast4: '12', // Too short
         outcome: 'success',
       });
@@ -106,57 +81,49 @@ describe('MockPaymentService', () => {
     });
 
     it('should process failed payment', async () => {
-      mockPrismaClient.order.findUnique.mockResolvedValue({
-        id: 'ord_123',
+      const order = await orderService.createOrder({
         title: 'Test',
         price: 1000,
         currency: 'RUB',
-        status: 'PENDING' as const,
         customerEmail: 'test@test.com',
-        paymentId: null,
-        idempotencyKey: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
       });
 
       const result = await service.processPayment({
-        orderId: 'ord_123',
+        orderId: order.id,
         cardLast4: '0000',
         outcome: 'fail',
       });
 
       expect(result.success).toBe(false);
+
+      // Order status should be CANCELED
+      const updatedOrder = await orderService.getOrderById(order.id);
+      expect(updatedOrder?.status).toBe('CANCELED');
     });
 
     it('should generate unique payment IDs', async () => {
-      const baseOrder = {
-        id: 'ord_123',
+      const order1 = await orderService.createOrder({
         title: 'Test',
         price: 1000,
         currency: 'RUB',
-        status: 'PENDING' as const,
-        customerEmail: 'test@test.com',
-        paymentId: null,
-        idempotencyKey: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+        customerEmail: 'a@test.com',
+      });
 
-      mockPrismaClient.order.findUnique.mockResolvedValue(baseOrder);
-      mockPrismaClient.order.update.mockResolvedValue({
-        ...baseOrder,
-        status: 'PAID' as const,
-        paymentId: 'mock_pay_123',
+      const order2 = await orderService.createOrder({
+        title: 'Test',
+        price: 1000,
+        currency: 'RUB',
+        customerEmail: 'b@test.com',
       });
 
       const result1 = await service.processPayment({
-        orderId: 'ord_123',
+        orderId: order1.id,
         cardLast4: '1111',
         outcome: 'success',
       });
 
       const result2 = await service.processPayment({
-        orderId: 'ord_123',
+        orderId: order2.id,
         cardLast4: '2222',
         outcome: 'success',
       });
@@ -168,46 +135,33 @@ describe('MockPaymentService', () => {
 
   describe('getReceipt', () => {
     it('should return receipt for paid order', async () => {
-      const paidOrder = {
-        id: 'ord_123',
+      const order = await orderService.createOrder({
         title: 'Test Product',
         price: 1000,
         currency: 'RUB',
-        status: 'PAID' as const,
         customerEmail: 'test@example.com',
-        paymentId: 'pay_456',
-        idempotencyKey: null,
-        createdAt: new Date(),
-        updatedAt: new Date('2024-01-15'),
-      };
+      });
 
-      mockPrismaClient.order.findUnique.mockResolvedValue(paidOrder);
+      await orderService.updateOrderStatus(order.id, 'PAID');
+      await orderService.updatePaymentId(order.id, 'pay_456');
 
-      const receipt = await service.getReceipt('ord_123', '4242', 'IVAN IVANOV');
+      const receipt = await service.getReceipt(order.id, '4242', 'IVAN IVANOV');
 
       expect(receipt).toBeDefined();
-      expect(receipt?.orderId).toBe('ord_123');
+      expect(receipt?.orderId).toBe(order.id);
       expect(receipt?.cardLast4).toBe('4242');
       expect(receipt?.status).toBe('succeeded');
     });
 
     it('should return null for non-paid order', async () => {
-      const pendingOrder = {
-        id: 'ord_123',
+      const order = await orderService.createOrder({
         title: 'Test Product',
         price: 1000,
         currency: 'RUB',
-        status: 'PENDING' as const,
         customerEmail: 'test@example.com',
-        paymentId: null,
-        idempotencyKey: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+      });
 
-      mockPrismaClient.order.findUnique.mockResolvedValue(pendingOrder);
-
-      const receipt = await service.getReceipt('ord_123', '4242', 'IVAN IVANOV');
+      const receipt = await service.getReceipt(order.id, '4242', 'IVAN IVANOV');
 
       expect(receipt).toBeNull();
     });
