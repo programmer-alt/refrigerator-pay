@@ -151,7 +151,7 @@ export function PaymentPage() {
   const testCards = [
     { number: '4111 1111 1111 1111', bank: 'SberBank' },
     { number: '5213 0000 0000 0002', bank: 'Tinkoff' },
-    { number: '2200 0000 0000 0003', bank: 'VTB' },
+    { number: '2200 0000 0000 0002', bank: 'VTB' },
     { number: '5469 0000 0000 0003', bank: 'Alfa-Bank' },
   ];
 
