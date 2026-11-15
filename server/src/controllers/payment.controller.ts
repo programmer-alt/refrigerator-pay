@@ -6,11 +6,17 @@ import { OrderService } from '../services/order.service';
 import { createPaymentInputSchema, mockPaymentInputSchema, validate } from '../validators';
 import { config } from '../config/env';
 
-const paymentService = new PaymentService();
-const mockPaymentService = new MockPaymentService();
-const orderService = new OrderService();
-
 export class PaymentController {
+  private paymentService: PaymentService;
+  private mockPaymentService: MockPaymentService;
+  private orderService: OrderService;
+
+  constructor(sharedOrderService?: OrderService, paymentService?: PaymentService, mockPaymentService?: MockPaymentService) {
+    this.orderService = sharedOrderService ?? new OrderService();
+    this.paymentService = paymentService ?? new PaymentService(this.orderService);
+    this.mockPaymentService = mockPaymentService ?? new MockPaymentService(this.orderService);
+  }
+
   async createPaymentIntent(req: Request, res: Response): Promise<void> {
     // 🔴 Zod-валидация вместо ручных проверок
     const validation = validate(createPaymentInputSchema, req.body);
@@ -21,7 +27,7 @@ export class PaymentController {
     }
 
     try {
-      const payment = await paymentService.createPayment(validation.data);
+      const payment = await this.paymentService.createPayment(validation.data);
       res.status(200).json(payment);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -30,7 +36,7 @@ export class PaymentController {
   }
 
   /**
-   * Обработка оплаты через mock-шлюз (PCI DSS compliant).
+   * Обработка оплаты через mock-шлюз (demo only).
    *
    * 🔴 Принимаем только cardLast4 и outcome (success/fail).
    * Полные реквизиты карты НЕ принимаются.
@@ -45,7 +51,7 @@ export class PaymentController {
     }
 
     try {
-      const result = await mockPaymentService.processPayment(validation.data);
+      const result = await this.mockPaymentService.processPayment(validation.data);
 
       if (!result.success) {
         res.status(400).json({
@@ -75,7 +81,7 @@ export class PaymentController {
     const { cardLast4 = '0000', cardHolder = '' } = req.query as Record<string, string>;
 
     try {
-      const receipt = await mockPaymentService.getReceipt(orderId, cardLast4, cardHolder);
+      const receipt = await this.mockPaymentService.getReceipt(orderId, cardLast4, cardHolder);
 
       if (!receipt) {
         res.status(404).json({ error: 'Receipt not found or payment not completed' });
@@ -132,7 +138,7 @@ export class PaymentController {
 
     try {
       // --- Защита от дубликатов: проверяем текущий статус ---
-      const existingOrder = await orderService.getOrderById(orderId);
+      const existingOrder = await this.orderService.getOrderById(orderId);
 
       if (!existingOrder) {
         res.status(404).json({ error: 'Order not found' });
@@ -149,7 +155,7 @@ export class PaymentController {
       // Если это режим YooKassa и статус succeeded — проверяем платеж напрямую
       if (config.paymentMode !== 'mock' && paymentStatus === 'succeeded' && existingOrder.paymentId) {
         try {
-          const verification = await paymentService.verifyPaymentWithYooKassa(existingOrder.paymentId);
+          const verification = await this.paymentService.verifyPaymentWithYooKassa(existingOrder.paymentId);
 
           if (!verification.succeeded) {
             res.status(400).json({ error: 'Payment verification failed' });
@@ -170,13 +176,13 @@ export class PaymentController {
         }
       }
 
-      const { status: newStatus } = await paymentService.handleWebhook(
+      const { status: newStatus } = await this.paymentService.handleWebhook(
         eventId,
         paymentStatus
       );
 
       // --- Обновляем статус заказа ---
-      await orderService.updateOrderStatus(orderId, newStatus);
+      await this.orderService.updateOrderStatus(orderId, newStatus);
 
       res.status(200).json({ received: true });
     } catch (error) {
@@ -193,7 +199,7 @@ export class PaymentController {
     const orderId = String(req.params.orderId || '');
 
     try {
-      const order = await orderService.getOrderById(orderId);
+      const order = await this.orderService.getOrderById(orderId);
 
       if (!order) {
         res.status(404).json({ error: 'Order not found' });
@@ -213,7 +219,7 @@ export class PaymentController {
       // Если есть paymentId — синхронизируем с ЮKassa
       if (order.paymentId && config.paymentMode !== 'mock') {
         try {
-          const syncResult = await paymentService.syncPaymentStatus(orderId);
+          const syncResult = await this.paymentService.syncPaymentStatus(orderId);
           res.status(200).json({
             orderId: order.id,
             status: syncResult.status,
