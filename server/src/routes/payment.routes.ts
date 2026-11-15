@@ -1,9 +1,17 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { PaymentController } from '../controllers/payment.controller';
+import { OrderService } from '../services/order.service';
+import { PaymentService } from '../services/payment.service';
+import { MockPaymentService } from '../services/mock-payment.service';
 
 const router = express.Router();
-const paymentController = new PaymentController();
+
+// Shared OrderService instance — все контроллеры используют одну Map
+const sharedOrderService = new OrderService();
+const paymentService = new PaymentService(sharedOrderService);
+const mockPaymentService = new MockPaymentService(sharedOrderService);
+const paymentController = new PaymentController(sharedOrderService, paymentService, mockPaymentService);
 
 router.post('/create-intent', (req: Request, res: Response) =>
   paymentController.createPaymentIntent(req, res)

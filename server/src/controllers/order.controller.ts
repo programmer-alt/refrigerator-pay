@@ -3,10 +3,15 @@ import { OrderService } from '../services/order.service';
 import { CatalogService } from '../services/catalog.service';
 import { createOrderInputSchema, validate } from '../validators';
 
-const orderService = new OrderService();
-const catalogService = new CatalogService();
-
 export class OrderController {
+  private orderService: OrderService;
+  private catalogService: CatalogService;
+
+  constructor(orderService?: OrderService, catalogService?: CatalogService) {
+    this.orderService = orderService ?? new OrderService();
+    this.catalogService = catalogService ?? new CatalogService();
+  }
+
   /**
    * Создание заказа с Zod-валидацией.
    */
@@ -22,7 +27,7 @@ export class OrderController {
     const { productId, customerEmail } = validation.data;
 
     // 🔒 Проверка продукта из каталога (вне транзакции — каталог статичный)
-    const catalogProduct = catalogService.getProductById(productId);
+    const catalogProduct = this.catalogService.getProductById(productId);
 
     if (!catalogProduct) {
       res.status(404).json({ error: 'Product not found in catalog' });
@@ -30,8 +35,8 @@ export class OrderController {
     }
 
     try {
-      // Создание заказа через OrderService (in-memory)
-      const order = await orderService.createOrder({
+      // Создание заказа через shared OrderService
+      const order = await this.orderService.createOrder({
         title: catalogProduct.title,
         price: catalogProduct.price,
         currency: catalogProduct.currency,
@@ -53,7 +58,7 @@ export class OrderController {
       return;
     }
 
-    const order = await orderService.getOrderById(id);
+    const order = await this.orderService.getOrderById(id);
 
     if (!order) {
       res.status(404).json({ error: 'Order not found' });
