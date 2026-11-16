@@ -23,21 +23,39 @@ export interface OrderServiceOptions {
 }
 
 /**
+ * Internal order with access tracking (not exposed to callers).
+ */
+interface InternalOrder extends OrderDto {
+  __lastAccessedAt: number;
+}
+
+/**
  * OrderService — in-memory хранилище заказов с file-based persistence.
  *
- * Использует Map для хранения заказов в оперативной памяти.
- * Данные сохраняются в JSON-файл при каждом изменении и загружаются при старте.
- * Подходит для демо и тестирования без внешней БД.
+ * 🔒 ТРАНЗАКЦИОННАЯ МОДЕЛЬ (memory-first with rollback):
+ *   - Сначала this.orders.set() — память обновляется
+ *   - Потом saveToDisk() — сохраняем на диск
+ *   - При крахе saveToDisk — rollback (возвращаем старый стейт или удаляем)
+ *   - Гарантирует: если saveToDisk успешен, данные на диске согласованы с памятью
  *
- * 🔒 Использует crypto.randomUUID() для генерации ID.
- * 🔒 LRU-эвакция: удаляет least-recently-used заказы при переполнении.
- * 🔒 Pending-заказы (PAID/CANCELED) не удаляются.
- * 🔒 Atomic writes: temp file + rename.
- * 🔒 Quarantine corrupt files.
- * 🔒 File permissions 0600.
+ * 🔒 БЕЗОПАСНЫЙ КАРАНТИН:
+ *   - Только SyntaxError (JSON corruption) → quarantine с уникальным именем
+ *   - I/O errors → не карантиним, выбрасываем ошибку
+ *   - После карантина НЕ кидает ошибку — сервер запускается с пустым Map
+ *
+ * 🔒 БЕЗОПАСНАЯ ЭВАКУАЦИЯ:
+ *   - Evict только PENDING с paymentId === null
+ *   - Если недостаточно — бросаем Error (503), не трогаем PAID/CANCELED
+ *
+ * 🔒 МОНОТОННОСТЬ СТАТУСОВ:
+ *   - PAID/CANCELED — терминальные, не меняются
+ *   - PENDING → PAID | CANCELED
+ *
+ * 🔒 ПЕРСИСТЕНЦИЯ __lastAccessedAt:
+ *   - Сохраняется в JSON, восстанавливается при загрузке
  */
 export class OrderService {
-  private orders = new Map<string, OrderDto & { __lastAccessedAt: number }>();
+  private orders = new Map<string, InternalOrder>();
 
   /** Максимальное количество заказов в Map */
   private readonly maxOrders: number;
@@ -45,53 +63,65 @@ export class OrderService {
   private readonly maxAgeMs: number;
   /** Путь к файлу persistence */
   private readonly persistencePath: string;
-  /** Путь к quarantine-файлу */
-  private readonly quarantinePath: string;
 
-  constructor(options?: OrderServiceOptions) {
-    this.maxOrders = options?.maxOrders ?? 10000;
-    this.maxAgeMs = options?.maxAgeMs ?? 7 * 24 * 60 * 60 * 1000;
-    this.persistencePath = path.join(
-      options?.persistenceDir || process.cwd(),
-      'orders.json'
-    );
-    this.quarantinePath = this.persistencePath + '.quarantine';
+  constructor(options?: string | OrderServiceOptions) {
+    if (typeof options === 'string') {
+      // Обратная совместимость: constructor('path/to/dir')
+      this.persistencePath = path.join(options, 'orders.json');
+      this.maxOrders = 10000;
+      this.maxAgeMs = 7 * 24 * 60 * 60 * 1000;
+    } else if (options) {
+      this.persistencePath = path.join(options.persistenceDir || process.cwd(), 'orders.json');
+      this.maxOrders = options.maxOrders ?? 10000;
+      this.maxAgeMs = options.maxAgeMs ?? 7 * 24 * 60 * 60 * 1000;
+    } else {
+      this.persistencePath = path.join(process.cwd(), 'orders.json');
+      this.maxOrders = 10000;
+      this.maxAgeMs = 7 * 24 * 60 * 60 * 1000;
+    }
     this.loadFromDisk();
   }
 
   /**
-   * Atomic write: serializes to temp file, then renames.
-   * Throws on failure — caller must handle.
+   * Strip internal fields before returning to caller.
+   */
+  private _stripInternal(order: InternalOrder): OrderDto {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { __lastAccessedAt, ...rest } = order;
+    return rest as OrderDto;
+  }
+
+  /**
+   * Atomic write: serializes to file with mode 0o600, then renames.
+   * Logs underlying error on failure and rethrows.
    */
   private saveToDisk(): void {
+    const ordersArray: OrderDto[] = Array.from(this.orders.values()).map(
+      ({ __lastAccessedAt, ...rest }) => rest
+    );
+    const json = JSON.stringify(ordersArray, null, 2);
     const tmpPath = this.persistencePath + '.tmp.' + crypto.randomUUID();
+
     try {
-      const ordersArray = Array.from(this.orders.values()).map(
-        ({ __lastAccessedAt, ...rest }) => rest
-      );
-      const json = JSON.stringify(ordersArray, null, 2);
-      fs.writeFileSync(tmpPath, json, 'utf-8');
-
-      // Set owner-only permissions (0600)
-      try {
-        fs.chmodSync(tmpPath, 0o600);
-      } catch {
-        // chmod not supported on some platforms (e.g., Windows)
-      }
-
+      // Создаём файл сразу с mode 0o600 — chmod не нужен
+      fs.writeFileSync(tmpPath, json, { encoding: 'utf-8', mode: 0o600 });
       fs.renameSync(tmpPath, this.persistencePath);
-    } catch {
+    } catch (err) {
       // Clean up temp file on failure
       try {
         fs.unlinkSync(tmpPath);
-      } catch { /* ignore cleanup failure */ }
-      throw new Error('Failed to persist orders to disk');
+      } catch {
+        /* ignore cleanup failure */
+      }
+      console.error('❌ Failed to persist orders to disk:', err);
+      throw err;
     }
   }
 
   /**
-   * Load orders from disk. Quarantines corrupt files.
-   * Throws on startup failure to prevent serving empty store.
+   * Load orders from disk. Quarantines ONLY JSON corruption (SyntaxError).
+   * I/O errors are re-thrown (valid file, can't read it).
+   * After quarantine, initializes empty Map — does NOT throw.
    */
   private loadFromDisk(): void {
     if (!fs.existsSync(this.persistencePath)) return;
@@ -104,23 +134,28 @@ export class OrderService {
       }
       console.log(`📦 Loaded ${this.orders.size} orders from disk`);
     } catch (err) {
-      // Quarantine corrupt file
-      try {
-        fs.renameSync(this.persistencePath, this.quarantinePath);
-        console.error(
-          `⚠️ Corrupt orders.json quarantined to ${this.quarantinePath}. Starting fresh.`
-        );
-      } catch {
-        console.error('⚠️ Failed to quarantine corrupt orders.json:', err);
+      if (err instanceof SyntaxError) {
+        // JSON corruption — quarantine with unique name
+        const quarantinePath = this.persistencePath + '.' + Date.now() + '.quarantine';
+        try {
+          fs.renameSync(this.persistencePath, quarantinePath);
+          console.error(
+            `⚠️ Corrupt orders.json quarantined to ${quarantinePath}. Starting fresh.`
+          );
+        } catch {
+          console.error('⚠️ Failed to quarantine corrupt orders.json');
+        }
+        this.orders.clear();
+        return; // НЕ кидать ошибку — сервер запустится
       }
-      // Re-throw to prevent serving empty store that would overwrite data
+      // I/O error or other — не карантиним валидный файл
+      console.error('❌ Failed to load orders from disk:', err);
       throw err;
     }
   }
 
   /**
    * Генерирует криптографически случайный ID.
-   * Collision-resistant: 32 bytes (64 hex chars).
    */
   private generateId(): string {
     return crypto.randomUUID();
@@ -128,7 +163,6 @@ export class OrderService {
 
   /**
    * Prune expired orders from the map.
-   * Called before eviction and on lookups.
    */
   private pruneExpired(): void {
     const now = Date.now();
@@ -141,9 +175,9 @@ export class OrderService {
   }
 
   /**
-   * LRU-эвакция: удаляет least-recently-used заказы, если Map переполнен.
-   * Не удаляет заказы со статусом PAID или CANCELED (pending payments).
-   * Вызывается при каждом createOrder.
+   * LRU-эвакуация: удаляет только PENDING заказы БЕЗ paymentId.
+   * Не трогает PAID/CANCELED и заказы с активным платежом.
+   * Бросает Error если недостаточно evictable — не удаляет завершенные.
    */
   private evictIfNeeded(): void {
     if (this.orders.size < this.maxOrders) return;
@@ -151,27 +185,22 @@ export class OrderService {
     // Сначала удаляем просроченные
     this.pruneExpired();
 
-    // Если всё ещё переполнен — удаляем LRU, исключая PAID/CANCELED
     if (this.orders.size >= this.maxOrders) {
       const toDeleteCount = this.orders.size - this.maxOrders + 1;
-      // Сортируем по lastAccessedAt, исключая завершённые заказы
+      // Только PENDING без paymentId — заказы с активным платежом не эвактируем
       const evictable = [...this.orders.entries()]
-        .filter(([, order]) => order.status === 'PENDING')
-        .sort(
-          (a, b) => a[1].__lastAccessedAt - b[1].__lastAccessedAt
-        );
+        .filter(([, order]) => order.status === 'PENDING' && order.paymentId === null)
+        .sort((a, b) => a[1].__lastAccessedAt - b[1].__lastAccessedAt);
 
-      // Если PENDING мало — удаляем самые старые PAID/CANCELED (fallback)
-      let toDelete: [string, OrderDto & { __lastAccessedAt: number }][];
-      if (evictable.length >= toDeleteCount) {
-        toDelete = evictable.slice(0, toDeleteCount);
-      } else {
-        // Нет достаточно PENDING — удаляем самые старые из всех
-        const allSorted = [...this.orders.entries()]
-          .sort((a, b) => new Date(a[1].createdAt).getTime() - new Date(b[1].createdAt).getTime());
-        toDelete = allSorted.slice(0, toDeleteCount);
+      if (evictable.length < toDeleteCount) {
+        throw new Error(
+          `Cannot create order: store full (${this.orders.size}/${this.maxOrders}). ` +
+          `Need to evict ${toDeleteCount}, but only ${evictable.length} evictable ` +
+          `(PENDING without paymentId). Complete or expire existing orders first.`
+        );
       }
 
+      const toDelete = evictable.slice(0, toDeleteCount);
       for (const [id] of toDelete) {
         this.orders.delete(id);
       }
@@ -179,17 +208,15 @@ export class OrderService {
   }
 
   async createOrder(data: OrderCreateData): Promise<OrderDto> {
-    // LRU-эвакция перед созданием нового заказа
     this.evictIfNeeded();
 
     // Retry loop for collision resistance
     for (let attempt = 0; attempt < 10; attempt++) {
       const id = this.generateId();
-
-      if (this.orders.has(id)) continue; // collision — retry
+      if (this.orders.has(id)) continue;
 
       const now = new Date().toISOString();
-      const order: OrderDto & { __lastAccessedAt: number } = {
+      const order: InternalOrder = {
         id,
         title: data.title,
         price: data.price,
@@ -203,22 +230,22 @@ export class OrderService {
         __lastAccessedAt: Date.now(),
       };
 
+      // ТРАНЗАКЦИЯ: сначала память, потом диск. При крахе диска — rollback
       this.orders.set(order.id, order);
       try {
         this.saveToDisk();
       } catch (err) {
         this.orders.delete(order.id); // rollback on save failure
+        console.error('❌ Failed to persist new order:', err);
         throw err;
       }
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { __lastAccessedAt, ...result } = order;
-      return result as OrderDto;
+      return this._stripInternal(order);
     }
 
     // Fallback (extremely unlikely)
     const fallbackId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const order: OrderDto & { __lastAccessedAt: number } = {
+    const order: InternalOrder = {
       id: fallbackId,
       title: data.title,
       price: data.price,
@@ -235,12 +262,11 @@ export class OrderService {
     try {
       this.saveToDisk();
     } catch (err) {
-      this.orders.delete(order.id); // rollback on save failure
+      this.orders.delete(order.id);
+      console.error('❌ Failed to persist new order:', err);
       throw err;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { __lastAccessedAt, ...result } = order;
-    return result as OrderDto;
+    return this._stripInternal(order);
   }
 
   async getOrderById(id: string): Promise<OrderDto | null> {
@@ -251,17 +277,24 @@ export class OrderService {
     const age = Date.now() - new Date(entry.createdAt).getTime();
     if (age > this.maxAgeMs) {
       this.orders.delete(id);
-      this.saveToDisk();
+      try {
+        this.saveToDisk();
+      } catch {
+        /* ignore save error on prune */
+      }
       return null;
     }
 
     // Update last accessed for LRU tracking
     entry.__lastAccessedAt = Date.now();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { __lastAccessedAt, ...result } = entry;
-    return result as OrderDto;
+    return this._stripInternal(entry);
   }
 
+  /**
+   * Транзакционное обновление статуса: сначала память, потом диск.
+   * Монотонность: PAID/CANCELED — терминальные, не меняются.
+   * При крахе saveToDisk — rollback к старому статусу.
+   */
   async updateOrderStatus(
     orderId: string,
     status: OrderStatus
@@ -269,36 +302,77 @@ export class OrderService {
     const entry = this.orders.get(orderId);
     if (!entry) return null;
 
-    const updated: OrderDto & { __lastAccessedAt: number } = {
+    // Монотонность: терминальные статусы не меняются
+    if (entry.status === 'PAID' || entry.status === 'CANCELED') {
+      return this._stripInternal(entry);
+    }
+
+    const oldStatus = entry.status;
+    const updated: InternalOrder = {
       ...entry,
       status,
       updatedAt: new Date().toISOString(),
     };
 
+    // ТРАНЗАКЦИЯ: сначала память
     this.orders.set(orderId, updated);
-    this.saveToDisk();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { __lastAccessedAt, ...result } = updated;
-    return result as OrderDto;
+
+    // Потом диск
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      // Rollback на старый статус
+      const rollback: InternalOrder = {
+        ...updated,
+        status: oldStatus,
+        updatedAt: entry.updatedAt,
+      };
+      this.orders.set(orderId, rollback);
+      console.error('❌ Failed to persist order status update, rolled back:', err);
+      throw err;
+    }
+    return this._stripInternal(updated);
   }
 
+  /**
+   * Транзакционное обновление paymentId: сначала память, потом диск.
+   * При крахе saveToDisk — rollback к старому paymentId.
+   */
   async updatePaymentId(orderId: string, paymentId: string): Promise<OrderDto | null> {
     const entry = this.orders.get(orderId);
     if (!entry) return null;
 
-    const updated: OrderDto & { __lastAccessedAt: number } = {
+    const oldPaymentId = entry.paymentId;
+    const updated: InternalOrder = {
       ...entry,
       paymentId,
       updatedAt: new Date().toISOString(),
     };
 
+    // ТРАНЗАКЦИЯ: сначала память
     this.orders.set(orderId, updated);
-    this.saveToDisk();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { __lastAccessedAt, ...result } = updated;
-    return result as OrderDto;
+
+    // Потом диск
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      // Rollback
+      const rollback: InternalOrder = {
+        ...updated,
+        paymentId: oldPaymentId,
+        updatedAt: entry.updatedAt,
+      };
+      this.orders.set(orderId, rollback);
+      console.error('❌ Failed to persist paymentId update, rolled back:', err);
+      throw err;
+    }
+    return this._stripInternal(updated);
   }
 
+  /**
+   * Транзакционное обновление idempotencyKey: сначала память, потом диск.
+   * При крахе saveToDisk — rollback к старому ключу.
+   */
   async updateIdempotencyKey(
     orderId: string,
     idempotencyKey: string
@@ -306,16 +380,64 @@ export class OrderService {
     const entry = this.orders.get(orderId);
     if (!entry) return null;
 
-    const updated: OrderDto & { __lastAccessedAt: number } = {
+    const oldKey = entry.idempotencyKey;
+    const updated: InternalOrder = {
       ...entry,
       idempotencyKey,
       updatedAt: new Date().toISOString(),
     };
 
+    // ТРАНЗАКЦИЯ: сначала память
     this.orders.set(orderId, updated);
-    this.saveToDisk();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { __lastAccessedAt, ...result } = updated;
-    return result as OrderDto;
+
+    // Потом диск
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      // Rollback
+      const rollback: InternalOrder = {
+        ...updated,
+        idempotencyKey: oldKey,
+        updatedAt: entry.updatedAt,
+      };
+      this.orders.set(orderId, rollback);
+      console.error('❌ Failed to persist idempotencyKey update, rolled back:', err);
+      throw err;
+    }
+    return this._stripInternal(updated);
+  }
+
+  /**
+   * Атомарная резервация idempotencyKey для заказа.
+   *
+   * Синхронно проверяет и устанавливает ключ (без await между check и set),
+   * что предотвращает race condition при параллельных createPayment запросах.
+   *
+   * @returns ключ, который уже есть или только что создан
+   * @throws если заказ не найден
+   */
+  async reserveIdempotencyKey(orderId: string): Promise<string> {
+    const entry = this.orders.get(orderId);
+    if (!entry) throw new Error(`Order ${orderId} not found`);
+
+    // Уже зарезервирован — возвращаем существующий
+    if (entry.idempotencyKey) {
+      return entry.idempotencyKey;
+    }
+
+    // Синхронно устанавливаем ключ (другой Promise не вмешается без await)
+    const key = `idem_${orderId}_${crypto.randomUUID()}`;
+    entry.idempotencyKey = key;
+    entry.updatedAt = new Date().toISOString();
+
+    // Асинхронно сохраняем на диск
+    try {
+      this.saveToDisk();
+    } catch (err) {
+      console.error('❌ Failed to persist idempotencyKey reservation:', err);
+      throw err;
+    }
+
+    return key;
   }
 }

@@ -6,6 +6,9 @@ const mockOrderService: any = {
   updateIdempotencyKey: jest.fn(),
   updatePaymentId: jest.fn(),
   updateOrderStatus: jest.fn(),
+  reserveIdempotencyKey: jest.fn().mockImplementation((orderId: string) =>
+    Promise.resolve(`idem_${orderId}_${Date.now()}`)
+  ),
 };
 
 jest.mock('../services/order.service', () => ({
@@ -16,6 +19,7 @@ jest.mock('../services/order.service', () => ({
 jest.mock('../config/env', () => ({
   config: {
     paymentMode: 'mock',
+    mockEnabled: true,
     clientUrl: 'http://localhost:5173',
     yookassa: {
       shopId: 'test_shop',

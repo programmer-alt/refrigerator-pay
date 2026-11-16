@@ -11,7 +11,7 @@ describe('MockPaymentService', () => {
   });
 
   describe('processPayment', () => {
-    it('should process successful payment', async () => {
+    it('should process successful payment (card valid by Luhn)', async () => {
       const order = await orderService.createOrder({
         title: 'Test Product',
         price: 1000,
@@ -19,9 +19,10 @@ describe('MockPaymentService', () => {
         customerEmail: 'test@example.com',
       });
 
+      // cardLast4='2222' passes Luhn for prefix 5213: 5213000000002222
       const result = await service.processPayment({
         orderId: order.id,
-        cardLast4: '4242',
+        cardLast4: '2222',
         outcome: 'success',
       });
 
@@ -80,7 +81,7 @@ describe('MockPaymentService', () => {
       expect(result.message).toBe('Неверный формат последних 4 цифр карты');
     });
 
-    it('should process failed payment', async () => {
+    it('should process failed payment (card invalid by Luhn)', async () => {
       const order = await orderService.createOrder({
         title: 'Test',
         price: 1000,
@@ -88,6 +89,7 @@ describe('MockPaymentService', () => {
         customerEmail: 'test@test.com',
       });
 
+      // cardLast4='0000' fails Luhn for all prefixes (5213000000000000 fails)
       const result = await service.processPayment({
         orderId: order.id,
         cardLast4: '0000',
@@ -116,9 +118,10 @@ describe('MockPaymentService', () => {
         customerEmail: 'b@test.com',
       });
 
+      // cardLast4='2222' passes Luhn for prefix 5213
       const result1 = await service.processPayment({
         orderId: order1.id,
-        cardLast4: '1111',
+        cardLast4: '2222',
         outcome: 'success',
       });
 

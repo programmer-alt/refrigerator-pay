@@ -349,11 +349,11 @@ describe('OrderService', () => {
     });
   });
 
-  describe('constructor options (Comment 14)', () => {
-    it('should accept custom maxOrders and maxAgeMs', async () => {
+  describe('constructor options (Comment 14, 17)', () => {
+    it('should evict expired orders and accept new ones (maxAgeMs)', async () => {
       const service = new OrderService({
         persistenceDir: tmpDir,
-        maxOrders: 3,
+        maxOrders: 100,
         maxAgeMs: 50, // 50ms for fast testing
       });
 
@@ -372,7 +372,14 @@ describe('OrderService', () => {
       // Wait for expiry
       await new Promise((r) => setTimeout(r, 60));
 
-      // Create one more — should trigger eviction of expired orders
+      // Orders should be expired
+      for (const order of orders) {
+        const retrieved = await service.getOrderById(order.id);
+        expect(retrieved).toBeNull();
+      }
+
+      // Map should be empty (expired orders pruned on next operation)
+      // Create one more — should succeed (expired orders pruned first)
       const newOrder = await service.createOrder({
         title: 'New Order',
         price: 100,
@@ -381,6 +388,131 @@ describe('OrderService', () => {
       });
 
       expect(newOrder).toBeDefined();
+      expect(newOrder.title).toBe('New Order');
+
+      // Verify expired orders are gone from map
+      expect(service['orders'].size).toBe(1);
+    });
+
+    it('should evict PENDING orders when maxOrders reached', async () => {
+      const MAX = 3;
+      const service = new OrderService({
+        persistenceDir: tmpDir,
+        maxOrders: MAX,
+        maxAgeMs: 60000, // 60s, no expiry
+      });
+
+      // Create MAX orders
+      const orders: any[] = [];
+      for (let i = 0; i < MAX; i++) {
+        const order = await service.createOrder({
+          title: `Order ${i}`,
+          price: 100,
+          currency: 'RUB',
+          customerEmail: `test${i}@test.com`,
+        });
+        orders.push(order);
+      }
+
+      expect(service['orders'].size).toBe(MAX);
+
+      // Create one more — should evict oldest PENDING
+      const newOrder = await service.createOrder({
+        title: 'New Order',
+        price: 100,
+        currency: 'RUB',
+        customerEmail: 'new@test.com',
+      });
+
+      expect(newOrder).toBeDefined();
+      expect(service['orders'].size).toBe(MAX);
+
+      // Oldest order (Order 0) should be evicted
+      const evicted = await service.getOrderById(orders[0].id);
+      expect(evicted).toBeNull();
+
+      // Newest order should exist
+      const retrieved = await service.getOrderById(newOrder.id);
+      expect(retrieved).not.toBeNull();
+    });
+
+    it('should throw 503 when no PENDING orders available for eviction', async () => {
+      const MAX = 3;
+      const service = new OrderService({
+        persistenceDir: tmpDir,
+        maxOrders: MAX,
+        maxAgeMs: 60000,
+      });
+
+      // Create MAX orders
+      const orders: any[] = [];
+      for (let i = 0; i < MAX; i++) {
+        const order = await service.createOrder({
+          title: `Order ${i}`,
+          price: 100,
+          currency: 'RUB',
+          customerEmail: `test${i}@test.com`,
+        });
+        orders.push(order);
+      }
+
+      // Mark ALL orders as PAID — none evictable
+      for (const order of orders) {
+        await service.updateOrderStatus(order.id, 'PAID');
+      }
+
+      // Try to create new order — should throw
+      await expect(
+        service.createOrder({
+          title: 'New Order',
+          price: 100,
+          currency: 'RUB',
+          customerEmail: 'new@test.com',
+        })
+      ).rejects.toThrow(/store full|evict/);
+    });
+
+    it('should NOT evict orders with active paymentId', async () => {
+      const MAX = 3;
+      const service = new OrderService({
+        persistenceDir: tmpDir,
+        maxOrders: MAX,
+        maxAgeMs: 60000,
+      });
+
+      // Create MAX orders
+      const orders: any[] = [];
+      for (let i = 0; i < MAX; i++) {
+        const order = await service.createOrder({
+          title: `Order ${i}`,
+          price: 100,
+          currency: 'RUB',
+          customerEmail: `test${i}@test.com`,
+        });
+        orders.push(order);
+      }
+
+      // Set paymentId on order 0 — it should NOT be evicted
+      await service.updatePaymentId(orders[0].id, 'pay_active');
+
+      // Create one more to trigger eviction
+      const newOrder = await service.createOrder({
+        title: 'New Order',
+        price: 100,
+        currency: 'RUB',
+        customerEmail: 'new@test.com',
+      });
+
+      expect(newOrder).toBeDefined();
+
+      // Order with paymentId should still exist
+      const withPayment = await service.getOrderById(orders[0].id);
+      expect(withPayment).not.toBeNull();
+      expect(withPayment?.paymentId).toBe('pay_active');
+
+      // Order without paymentId should be evicted
+      const noPayment = await service.getOrderById(orders[1].id);
+      expect(noPayment).toBeNull();
     });
   });
 });
