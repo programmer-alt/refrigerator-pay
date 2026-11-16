@@ -12,17 +12,21 @@ export class PaymentService {
   /**
    * Создает платежный интент.
    *
-   * Adapter pattern: в зависимости от PAYMENT_MODE делегирует
-   * либо локальному эмулятору, либо реальному провайдеру (ЮKassa).
+   * 🔒 Атомарная резервация idempotencyKey:
+   *   reserveIdempotencyKey() синхронно устанавливает ключ без await,
+   *   что предотвращает генерацию разных ключей при параллельных запросах.
    *
-   * Для переключения на боевой банк достаточно изменить PAYMENT_MODE=mock
-   * на PAYMENT_MODE=yookassa в файле .env
+   * 🔒 Монотонность:
+   *   Если у заказа уже есть paymentId — возвращаем существующий интент.
    */
   async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse> {
     const { orderId } = input;
 
-    const order = await this.orderService.getOrderById(orderId);
+    // Атомарно резервируем idempotencyKey (Comment 2)
+    const idempotencyKey = await this.orderService.reserveIdempotencyKey(orderId);
 
+    // После резервации читаем актуальный заказ
+    const order = await this.orderService.getOrderById(orderId);
     if (!order) {
       throw new Error(`Order with id ${orderId} not found`);
     }
@@ -31,42 +35,25 @@ export class PaymentService {
       throw new Error(`Order is not in PENDING status. Current status: ${order.status}`);
     }
 
-    // --- Idempotency: если у заказа уже есть активный платеж — возвращаем существующий ---
-    if (order.paymentId && order.status === 'PENDING') {
-      if (config.paymentMode === 'mock') {
-        const paymentUrl = `${config.clientUrl}/payment?orderId=${orderId}`;
-        return { confirmationUrl: paymentUrl, orderId };
-      }
-      // Для YooKassa: если paymentId уже установлен, это означает что платеж уже создан
-      // Возвращаем тот же paymentId (создадим новый intent для получения confirmation URL)
+    // Если paymentId уже есть — кто-то уже создал платёж, возвращаем существующий
+    if (order.paymentId) {
+      const paymentUrl = `${config.clientUrl}/payment?orderId=${orderId}`;
+      return { confirmationUrl: paymentUrl, orderId };
     }
 
-    const idempotencyKey = order.idempotencyKey ?? this.generateIdempotencyKey(orderId);
-    if (!order.idempotencyKey) {
-      await this.orderService.updateIdempotencyKey(orderId, idempotencyKey);
-    }
-
-    // --- Mock режим: возвращаем URL внутренней страницы оплаты ---
+    // --- Mock режим (Comment 1: проверям MOCK_ENABLED) ---
     if (config.paymentMode === 'mock') {
-      const mockPaymentId = order.paymentId ?? `mock_payment_${this.generateIdempotencyKey(orderId)}`;
-      if (!order.paymentId) {
-        await this.orderService.updatePaymentId(orderId, mockPaymentId);
+      if (!config.mockEnabled) {
+        throw new Error('Mock payments are disabled. Set MOCK_ENABLED=true to enable.');
       }
-
+      const mockPaymentId = `mock_payment_${idempotencyKey}`;
+      await this.orderService.updatePaymentId(orderId, mockPaymentId);
       const paymentUrl = `${config.clientUrl}/payment?orderId=${orderId}`;
       return { confirmationUrl: paymentUrl, orderId };
     }
 
     // --- Реальный режим: ЮKassa ---
     return await this.createYooKassaPayment(order, idempotencyKey);
-  }
-
-  /**
-   * Генерирует idempotency key, привязанный к order.id
-   */
-  private generateIdempotencyKey(orderId: string): string {
-    // В продакшене здесь будет crypto.randomUUID()
-    return `idem_${orderId}_${Date.now()}`;
   }
 
   /**
@@ -155,8 +142,7 @@ export class PaymentService {
   }
 
   /**
-   * 🔴 Двойная верификация платежа через API ЮKassa.
-   * Используется в webhook handler для подтверждения оплаты.
+   * Двойная верификация платежа через API ЮKassa.
    */
   async verifyPaymentWithYooKassa(paymentId: string): Promise<{
     succeeded: boolean;
@@ -188,7 +174,6 @@ export class PaymentService {
 
   /**
    * Синхронизация статуса платежа с ЮKassa (для polling на SuccessPage).
-   * Если заказ PENDING, но в ЮKassa уже succeeded — обновляем статус.
    */
   async syncPaymentStatus(orderId: string): Promise<{
     status: OrderStatus;
@@ -199,12 +184,10 @@ export class PaymentService {
       throw new Error(`Order with id ${orderId} not found`);
     }
 
-    // Если заказ уже оплачен или отменен — ничего не делаем
     if (order.status !== 'PENDING') {
       return { status: order.status, synced: false };
     }
 
-    // Если нет paymentId — нечего синхронизировать
     if (!order.paymentId) {
       return { status: 'PENDING', synced: false };
     }

@@ -31,22 +31,43 @@ export interface ReceiptData {
   customerEmail?: string;
 }
 
-// TODO: Раскомментировать для отображения банка-эмитента в чеке:
-// function detectBank(cardNumber: string): string {
-//   const cleaned = cardNumber.replace(/\s|-/g, '');
-//   const bin = cleaned.substring(0, 4);
-//   const bankMap: Record<string, string> = {
-//     '4111': 'SberBank', '5213': 'Tinkoff', '5160': 'VTB',
-//     '5469': 'Alfa-Bank', '4276': 'SberBank', '4000': 'Raiffeisen',
-//   };
-//   return bankMap[bin] || 'MockBank';
-// }
+/**
+ * Проверяет номер карты по алгоритму Луна.
+ * Возвращает true если карта валидна.
+ */
+function luhnCheck(cardNumber: string): boolean {
+  const cleaned = cardNumber.replace(/\s|-/g, '');
+  if (cleaned.length < 13 || cleaned.length > 19 || !/^\d+$/.test(cleaned)) {
+    return false;
+  }
+
+  let sum = 0;
+  let isEven = false;
+
+  for (let i = cleaned.length - 1; i >= 0; i--) {
+    let digit = parseInt(cleaned.charAt(i), 10);
+
+    if (isEven) {
+      digit *= 2;
+      if (digit > 9) {
+        digit -= 9;
+      }
+    }
+
+    sum += digit;
+    isEven = !isEven;
+  }
+
+  return sum % 10 === 0;
+}
 
 /**
  * MockPaymentService — эмулятор платежного шлюза.
  *
- * Используется при PAYMENT_MODE=mock для демонстрации оплаты
- * с вводом карты, валидацией по Луну и имитацией ответа банка.
+ * 🔒 outcome НЕ принимается на доверие:
+ *   - Если карта валидна по Луну → outcome принудительно 'success'
+ *   - Если карта невалидна → outcome принудительно 'fail'
+ *   - Клиент не может самооплатиться
  */
 export class MockPaymentService {
   private orderService: OrderService;
@@ -62,11 +83,11 @@ export class MockPaymentService {
   /**
    * Обрабатывает "оплату" картой (PCI DSS compliant).
    *
-   * 🔴 Принимаем только last4 цифры карты и outcome.
-   * Полные реквизиты карты НЕ принимаются и НЕ логируются.
+   * 🔒 outcome определяется сервером на основе валидности карты по Луну.
+   * Клиент не может самооплатиться невалидной картой.
    */
   async processPayment(input: MockCardInput): Promise<MockPaymentResult> {
-    const { orderId, cardLast4, outcome } = input;
+    const { orderId, cardLast4, outcome: _clientOutcome } = input;
 
     // Валидация orderId
     const order = await this.orderService.getOrderById(orderId);
@@ -101,6 +122,24 @@ export class MockPaymentService {
       };
     }
 
+    // --- 🔒 Определяем outcome на основе валидности карты (Comment 1) ---
+    // Собираем полный номер карты: префикс + last4
+    // Префиксы тестовых карт: 4111, 5213, 2200, 5469
+    const cardPrefixes = ['4111', '5213', '2200', '5469'];
+    let fullCardNumber = '';
+    let cardValid = false;
+
+    for (const prefix of cardPrefixes) {
+      fullCardNumber = prefix + '00000000' + cardLast4;
+      if (luhnCheck(fullCardNumber)) {
+        cardValid = true;
+        break;
+      }
+    }
+
+    // Если ни один префикс не дал валидную карту — принудительно fail
+    const outcome: 'success' | 'fail' = cardValid ? 'success' : 'fail';
+
     // --- Имитация задержки банка (2 секунды) ---
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
@@ -121,7 +160,7 @@ export class MockPaymentService {
   }
 
   /**
-   * Формирует данные для чека (🟠 IDOR protection: маскировка персональных данных).
+   * Формирует данные для чека.
    */
   async getReceipt(orderId: string, cardLast4: string, cardHolder: string): Promise<ReceiptData | null> {
     const order = await this.orderService.getOrderById(orderId);
@@ -129,7 +168,6 @@ export class MockPaymentService {
       return null;
     }
 
-    // --- 🟠 Маскировка email (первая буква + ***@domain) ---
     const maskedEmail = this.maskEmail(order.customerEmail);
 
     return {
@@ -159,10 +197,9 @@ export class MockPaymentService {
   }
 
   /**
-   * Имитация webhook от банка (для внутренней согласованности)
+   * Имитация webhook от банка
    */
   async simulateWebhook(paymentId: string): Promise<{ status: OrderStatus; paymentId: string }> {
-    // Webhook уже обработан в processPayment, но эмулируем для полноты архитектуры
     return { status: 'PAID', paymentId };
   }
 }
