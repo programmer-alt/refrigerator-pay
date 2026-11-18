@@ -9,24 +9,10 @@ export class PaymentService {
     this.orderService = orderService ?? new OrderService();
   }
 
-  /**
-   * Создает платежный интент.
-   *
-   * 🔒 Атомарная резервация idempotencyKey:
-   *   reserveIdempotencyKey() синхронно устанавливает ключ без await,
-   *   что предотвращает генерацию разных ключей при параллельных запросах.
-   *
-   * 🔒 Монотонность:
-   *   Если у заказа уже есть paymentId — возвращаем существующий интент.
-   */
   async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResponse> {
     const { orderId } = input;
-
-    // Атомарно резервируем idempotencyKey (Comment 2)
-    const idempotencyKey = await this.orderService.reserveIdempotencyKey(orderId);
-
-    // После резервации читаем актуальный заказ
     const order = await this.orderService.getOrderById(orderId);
+
     if (!order) {
       throw new Error(`Order with id ${orderId} not found`);
     }
@@ -35,50 +21,33 @@ export class PaymentService {
       throw new Error(`Order is not in PENDING status. Current status: ${order.status}`);
     }
 
-    // Если paymentId уже есть — кто-то уже создал платёж, возвращаем существующий
-    if (order.paymentId) {
-      const paymentUrl = `${config.clientUrl}/payment?orderId=${orderId}`;
-      return { confirmationUrl: paymentUrl, orderId };
-    }
-
-    // --- Mock режим (Comment 1: проверям MOCK_ENABLED) ---
+    // Mock режим
     if (config.paymentMode === 'mock') {
-      if (!config.mockEnabled) {
-        throw new Error('Mock payments are disabled. Set MOCK_ENABLED=true to enable.');
-      }
-      const mockPaymentId = `mock_payment_${idempotencyKey}`;
+      const mockPaymentId = `mock_payment_${orderId}_${Date.now()}`;
       await this.orderService.updatePaymentId(orderId, mockPaymentId);
       const paymentUrl = `${config.clientUrl}/payment?orderId=${orderId}`;
       return { confirmationUrl: paymentUrl, orderId };
     }
 
-    // --- Реальный режим: ЮKassa ---
-    return await this.createYooKassaPayment(order, idempotencyKey);
+    // YooKassa режим
+    return await this.createYooKassaPayment(order);
   }
 
-  /**
-   * Обработка webhook от платежного провайдера.
-   * Делегирует обработку в зависимости от режима.
-   */
   async handleWebhook(
     eventId: string,
     paymentStatus: string
   ): Promise<{ status: OrderStatus; paymentId: string }> {
-    // Для mock-режима webhook не используется — оплата обрабатывается синхронно
     if (config.paymentMode === 'mock') {
       return { status: 'PAID', paymentId: eventId };
     }
-
     return this.handleYooKassaWebhook(eventId, paymentStatus);
   }
 
-  /**
-   * Создание платежа через ЮKassa (боевой режим)
-   */
   private async createYooKassaPayment(
-    order: { price: string | number; currency: string; title: string; id: string },
-    idempotencyKey: string
+    order: { price: string | number; currency: string; title: string; id: string }
   ): Promise<CreatePaymentResponse> {
+    const idempotencyKey = `idem_${order.id}_${Date.now()}`;
+
     const yookassaResponse = await fetch('https://api.yookassa.ru/v3/payments', {
       method: 'POST',
       headers: {
@@ -110,21 +79,19 @@ export class PaymentService {
       throw new Error(`YooKassa API error: ${JSON.stringify(errorData)}`);
     }
 
-    const yookassaData = (await yookassaResponse.json()) as {
+    const yookassaData = await yookassaResponse.json() as {
       id: string;
       confirmation?: { confirmation_url: string };
     };
-    const paymentId = yookassaData.id;
-    const confirmationUrl = yookassaData.confirmation?.confirmation_url || '';
 
-    await this.orderService.updatePaymentId(order.id, paymentId);
+    await this.orderService.updatePaymentId(order.id, yookassaData.id);
 
-    return { confirmationUrl, orderId: order.id };
+    return {
+      confirmationUrl: yookassaData.confirmation?.confirmation_url || '',
+      orderId: order.id,
+    };
   }
 
-  /**
-   * Обработка webhook ЮKassa (боевой режим)
-   */
   private async handleYooKassaWebhook(
     eventId: string,
     paymentStatus: string
@@ -132,18 +99,13 @@ export class PaymentService {
     switch (paymentStatus) {
       case 'succeeded':
         return { status: 'PAID', paymentId: eventId };
-
       case 'canceled':
         return { status: 'CANCELED', paymentId: eventId };
-
       default:
         throw new Error(`Unknown payment status: ${paymentStatus}`);
     }
   }
 
-  /**
-   * Двойная верификация платежа через API ЮKassa.
-   */
   async verifyPaymentWithYooKassa(paymentId: string): Promise<{
     succeeded: boolean;
     amount: { value: string; currency: string };
@@ -161,7 +123,7 @@ export class PaymentService {
       throw new Error(`Failed to verify payment with YooKassa: ${yookassaResponse.status}`);
     }
 
-    const data = (await yookassaResponse.json()) as {
+    const data = await yookassaResponse.json() as {
       status: string;
       amount: { value: string; currency: string };
     };
@@ -172,9 +134,6 @@ export class PaymentService {
     };
   }
 
-  /**
-   * Синхронизация статуса платежа с ЮKassa (для polling на SuccessPage).
-   */
   async syncPaymentStatus(orderId: string): Promise<{
     status: OrderStatus;
     synced: boolean;
@@ -194,13 +153,12 @@ export class PaymentService {
 
     try {
       const verification = await this.verifyPaymentWithYooKassa(order.paymentId);
-
       if (verification.succeeded) {
         await this.orderService.updateOrderStatus(orderId, 'PAID');
         return { status: 'PAID', synced: true };
       }
     } catch {
-      // Если не удалось синхронизировать — возвращаем текущий статус
+      // ignore
     }
 
     return { status: 'PENDING', synced: false };
