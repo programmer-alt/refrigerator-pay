@@ -6,7 +6,6 @@ interface Config {
   port: number;
   clientUrl: string;
   paymentMode: 'mock' | 'yookassa';
-  mockEnabled: boolean;
   yookassa: {
     shopId: string;
     secretKey: string;
@@ -25,17 +24,10 @@ function getEnvVar(name: string, fallback?: string): string {
   return value;
 }
 
-function getBoolEnvVar(name: string, fallback: boolean): boolean {
-  const value = process.env[name];
-  if (value === undefined) return fallback;
-  return value.toLowerCase() === 'true' || value === '1';
-}
-
 export const config: Config = {
   port: parseInt(getEnvVar('PORT', '5000'), 10),
   clientUrl: getEnvVar('CLIENT_URL', 'http://localhost:5173'),
   paymentMode: (getEnvVar('PAYMENT_MODE', 'mock') as 'mock' | 'yookassa') || 'mock',
-  mockEnabled: getBoolEnvVar('MOCK_ENABLED', true),
   yookassa: {
     shopId: getEnvVar('YOOKASSA_SHOP_ID'),
     secretKey: getEnvVar('YOOKASSA_SECRET_KEY'),

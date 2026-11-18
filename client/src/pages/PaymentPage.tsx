@@ -88,7 +88,7 @@ export function PaymentPage() {
   /**
    * Отправка платежа на сервер.
    *
-   * 🔴 Отправляем только cardLast4 и outcome.
+   * Отправляем только cardLast4 и outcome (success/fail).
    * Полные реквизиты карты НЕ отправляются на сервер.
    */
   const handleSubmit = async (e: React.FormEvent) => {
@@ -100,10 +100,8 @@ export function PaymentPage() {
       const cleanedCard = cardNumber.replace(/\D/g, '');
       const cardLast4 = cleanedCard.slice(-4);
 
-      // Определяем outcome на основе валидации на клиенте
-      // Для mock-режима: если номер карты валидный по Луну — success, иначе fail
-      const isValid = luhnCheck(cleanedCard);
-      const outcome = isValid ? 'success' : 'fail';
+      // Для демо: outcome определяется клиентом (любой номер карты = success)
+      const outcome: 'success' | 'fail' = cleanedCard.length >= 13 ? 'success' : 'fail';
 
       await api.payments.processMockPayment({
         orderId,
@@ -121,33 +119,7 @@ export function PaymentPage() {
     }
   };
 
-  /**
-   * Алгоритм Луна для валидации номера карты на клиенте.
-   */
-  function luhnCheck(cardNumber: string): boolean {
-    if (cardNumber.length < 13 || cardNumber.length > 19) return false;
-
-    let sum = 0;
-    let isEven = false;
-
-    for (let i = cardNumber.length - 1; i >= 0; i--) {
-      let digit = parseInt(cardNumber[i], 10);
-
-      if (isEven) {
-        digit *= 2;
-        if (digit > 9) {
-          digit -= 9;
-        }
-      }
-
-      sum += digit;
-      isEven = !isEven;
-    }
-
-    return sum % 10 === 0;
-  }
-
-  // Подсказки для тестовых карт (валидные по алгоритму Луна)
+  // Подсказки для тестовых карт
   const testCards = [
     { number: '4111 1111 1111 1111', bank: 'SberBank' },
     { number: '5213 0000 0000 0002', bank: 'Tinkoff' },
